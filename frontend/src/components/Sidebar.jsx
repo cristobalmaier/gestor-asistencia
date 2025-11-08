@@ -34,29 +34,29 @@ export default function Sidebar() {
   const { user, logout } = useAuth()
   const items = itemsByRole(user?.rol)
   return (
-    <aside className="w-72 bg-white border-r border-[var(--border)] min-h-screen flex flex-col sticky top-0">
-      <div className="p-6 border-b border-[var(--border)]">
+    <aside className="w-64 bg-white border-r border-gray-200 min-h-screen flex flex-col sticky top-0 shadow-sm">
+      <div className="p-6 border-b border-gray-200">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-lg bg-primary-600 flex items-center justify-center shadow-md">
             <ClipboardCheck className="text-white" size={20} />
           </div>
           <div>
-            <div className="font-bold text-lg text-[var(--text-primary)]">Asistencias</div>
-            <div className="text-xs text-[var(--text-secondary)]">Sistema de Gestión</div>
+            <div className="font-bold text-lg text-gray-900">Asistencias</div>
+            <div className="text-xs text-gray-500">Sistema de Gestión</div>
           </div>
         </div>
       </div>
       
-      <nav className="flex-1 p-4 space-y-1">
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {items.map(({ to, label, icon: Icon }) => (
           <NavLink 
             key={to} 
             to={to} 
             className={({ isActive }) => `
-              flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium text-sm
+              flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 font-medium text-sm
               ${isActive 
-                ? 'bg-indigo-50 text-indigo-700 shadow-sm' 
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-slate-50'
+                ? 'bg-primary-50 text-primary-700 border-l-4 border-primary-600' 
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
               }
             `}
           >
@@ -66,20 +66,23 @@ export default function Sidebar() {
         ))}
       </nav>
       
-      <div className="p-4 border-t border-[var(--border)] space-y-3">
-        <div className="flex items-center gap-3 px-3 py-2 bg-slate-50 rounded-xl">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">
+      <div className="mt-auto p-4 border-t border-gray-200 space-y-3 bg-white">
+        <div className="flex items-center gap-3 px-3 py-2.5 bg-gray-50 rounded-lg">
+          <div className="w-9 h-9 rounded-lg bg-primary-600 flex items-center justify-center text-white font-semibold text-sm shadow-sm">
             {user?.nombre?.[0]}{user?.apellido?.[0]}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-[var(--text-primary)] truncate">
+            <div className="text-sm font-semibold text-gray-900 truncate">
               {user?.nombre} {user?.apellido}
             </div>
-            <div className="text-xs text-[var(--text-secondary)] capitalize">{user?.rol}</div>
+            <div className="text-xs text-gray-500 capitalize">{user?.rol}</div>
           </div>
         </div>
         
-        <button onClick={logout} className="btn btn-ghost w-full justify-start">
+        <button 
+          onClick={logout} 
+          className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+        >
           <LogOut size={18} />
           Cerrar sesión
         </button>

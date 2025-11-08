@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { query } from '../db.js';
 import { Parser } from 'json2csv';
+import ExcelJS from 'exceljs';
+import PdfPrinter from 'pdfmake';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 const router = Router();
 
@@ -35,6 +39,93 @@ router.get('/curso', async (req, res) => {
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="reporte_curso.csv"');
       return res.send(csv);
+    } else if (format === 'excel') {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Reporte');
+      
+      // Headers
+      worksheet.columns = [
+        { header: 'Apellido', key: 'apellido', width: 20 },
+        { header: 'Nombre', key: 'nombre', width: 20 },
+        { header: 'Presentes', key: 'presentes', width: 10 },
+        { header: 'Ausentes', key: 'ausentes', width: 10 },
+        { header: 'Tardes', key: 'tardes', width: 10 },
+        { header: 'Justificados', key: 'justificados', width: 12 },
+        { header: 'Total', key: 'total', width: 10 }
+      ];
+      
+      // Add data
+      worksheet.addRows(rows);
+      
+      // Style header
+      worksheet.getRow(1).font = { bold: true };
+      
+      // Write to buffer
+      const buffer = await workbook.xlsx.writeBuffer();
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=reporte_curso.xlsx');
+      return res.send(buffer);
+    } else if (format === 'pdf') {
+      const fonts = {
+        Helvetica: {
+          normal: 'Helvetica',
+          bold: 'Helvetica-Bold',
+          italics: 'Helvetica-Oblique',
+          bolditalics: 'Helvetica-BoldOblique'
+        }
+      };
+      
+      const printer = new PdfPrinter(fonts);
+      const docDefinition = {
+        content: [
+          { text: 'Reporte de Asistencia por Curso', style: 'header' },
+          {
+            table: {
+              headerRows: 1,
+              widths: ['*', '*', 'auto', 'auto', 'auto', 'auto', 'auto'],
+              body: [
+                ['Apellido', 'Nombre', 'Presentes', 'Ausentes', 'Tardes', 'Justificados', 'Total'],
+                ...rows.map(row => [
+                  row.apellido,
+                  row.nombre,
+                  row.presentes,
+                  row.ausentes,
+                  row.tardes,
+                  row.justificados,
+                  row.total
+                ])
+              ]
+            }
+          }
+        ],
+        styles: {
+          header: {
+            fontSize: 18,
+            bold: true,
+            margin: [0, 0, 0, 10]
+          }
+        },
+        defaultStyle: {
+          font: 'Helvetica'
+        }
+      };
+      
+      const pdfDoc = printer.createPdfKitDocument(docDefinition);
+      let chunks = [];
+      
+      pdfDoc.on('data', (chunk) => chunks.push(chunk));
+      
+      return new Promise((resolve) => {
+        pdfDoc.on('end', () => {
+          const result = Buffer.concat(chunks);
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', 'attachment; filename=reporte_curso.pdf');
+          res.send(result);
+          resolve();
+        });
+        pdfDoc.end();
+      });
     }
     return res.json(rows);
   } catch (e) { return res.status(500).json({ message: 'Error' }); }
@@ -64,6 +155,88 @@ router.get('/alumno', async (req, res) => {
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="reporte_alumno.csv"');
       return res.send(csv);
+    } else if (format === 'excel') {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Reporte');
+      
+      // Headers
+      worksheet.columns = [
+        { header: 'Fecha', key: 'fecha', width: 15 },
+        { header: 'Materia', key: 'materia', width: 40 },
+        { header: 'Estado', key: 'estado', width: 15 }
+      ];
+      
+      // Add data with formatted dates
+      worksheet.addRows(rows.map(row => ({
+        ...row,
+        fecha: format(new Date(row.fecha), 'dd/MM/yyyy', { locale: es })
+      })));
+      
+      // Style header
+      worksheet.getRow(1).font = { bold: true };
+      
+      // Write to buffer
+      const buffer = await workbook.xlsx.writeBuffer();
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=reporte_alumno.xlsx');
+      return res.send(buffer);
+    } else if (format === 'pdf') {
+      const fonts = {
+        Helvetica: {
+          normal: 'Helvetica',
+          bold: 'Helvetica-Bold',
+          italics: 'Helvetica-Oblique',
+          bolditalics: 'Helvetica-BoldOblique'
+        }
+      };
+      
+      const printer = new PdfPrinter(fonts);
+      const docDefinition = {
+        content: [
+          { text: 'Reporte de Asistencia del Alumno', style: 'header' },
+          {
+            table: {
+              headerRows: 1,
+              widths: ['*', '*', 'auto'],
+              body: [
+                ['Fecha', 'Materia', 'Estado'],
+                ...rows.map(row => [
+                  format(new Date(row.fecha), 'dd/MM/yyyy', { locale: es }),
+                  row.materia,
+                  row.estado
+                ])
+              ]
+            }
+          }
+        ],
+        styles: {
+          header: {
+            fontSize: 18,
+            bold: true,
+            margin: [0, 0, 0, 10]
+          }
+        },
+        defaultStyle: {
+          font: 'Helvetica'
+        }
+      };
+      
+      const pdfDoc = printer.createPdfKitDocument(docDefinition);
+      let chunks = [];
+      
+      pdfDoc.on('data', (chunk) => chunks.push(chunk));
+      
+      return new Promise((resolve) => {
+        pdfDoc.on('end', () => {
+          const result = Buffer.concat(chunks);
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', 'attachment; filename=reporte_alumno.pdf');
+          res.send(result);
+          resolve();
+        });
+        pdfDoc.end();
+      });
     }
     return res.json(rows);
   } catch (e) { return res.status(500).json({ message: 'Error' }); }
