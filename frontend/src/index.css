@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+
+/* ============================================
+   SISTEMA DE DISEÑO MINIMALISTA PROFESIONAL
+   ============================================ */
+
+:root {
+  /* Paleta de colores sobria y limitada */
+  --primary: 67, 56, 202;        /* Índigo profundo (no vibrante) */
+  --primary-hover: 55, 48, 163;  /* Índigo más oscuro */
+  --surface: #ffffff;            /* Blanco puro */
+  --background: #fafafa;         /* Gris casi blanco */
+  --border: #e5e7eb;            /* Gris claro para bordes sutiles */
+  --text-primary: #111827;       /* Negro suave para texto principal */
+  --text-secondary: #6b7280;     /* Gris medio para texto secundario */
+  
+  /* Colores de estado - uso mínimo y sutil */
+  --success: 16, 185, 129;       /* Verde esmeralda */
+  --error: 239, 68, 68;          /* Rojo */
+  --warning: 245, 158, 11;       /* Ámbar */
+}
+
+@layer base {
+  html {
+    @apply h-full;
+  }
+  
+  body { 
+    @apply min-h-full bg-background text-gray-900 antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    font-weight: 400;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Jerarquía tipográfica clara - solo 2 pesos */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold text-gray-900 leading-tight;
+  }
+
+  h1 { @apply text-3xl; }
+  h2 { @apply text-2xl; }
+  h3 { @apply text-xl; }
+  h4 { @apply text-lg; }
+}
+
+@layer components {
+  /* ==================
+     BOTONES MINIMALISTAS
+     ================== */
+  .btn { 
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium 
+           transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 
+           disabled:opacity-40 disabled:pointer-events-none;
+  }
+  
+  .btn-primary { 
+    @apply bg-[rgb(var(--primary))] text-white hover:bg-[rgb(var(--primary-hover))] 
+           focus:ring-[rgb(var(--primary)/0.3)];
+  }
+  
+  .btn-secondary { 
+    @apply bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 
+           focus:ring-gray-300/30;
+  }
+  
+  .btn-ghost { 
+    @apply bg-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 
+           focus:ring-gray-200/50;
+  }
+  
+  .btn-sm { @apply px-3 py-2 text-xs; }
+  .btn-lg { @apply px-6 py-3 text-base; }
+
+  /* ==================
+     INPUTS Y FORMULARIOS
+     ================== */
+  .input { 
+    @apply w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white 
+           placeholder:text-gray-400 
+           focus:outline-none focus:border-[rgb(var(--primary))] focus:ring-2 focus:ring-[rgb(var(--primary)/0.1)] 
+           transition-colors duration-150;
+  }
+  
+  .select { 
+    @apply w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white 
+           focus:outline-none focus:border-[rgb(var(--primary))] focus:ring-2 focus:ring-[rgb(var(--primary)/0.1)] 
+           transition-colors duration-150;
+  }
+  
+  .label {
+    @apply block text-sm font-medium text-gray-900 mb-1.5;
+  }
+
+  /* ==================
+     TARJETAS LIMPIAS
+     ================== */
+  .card { 
+    @apply bg-white border border-gray-200 rounded-lg;
+  }
+  
+  .card-header {
+    @apply px-6 py-4 border-b border-gray-200;
+  }
+  
+  .card-body {
+    @apply p-6;
+  }
+
+  /* ==================
+     TABLAS LEGIBLES
+     ================== */
+  .table-card { 
+    @apply bg-white border border-gray-200 rounded-lg overflow-hidden;
+  }
+  
+  .table-head { 
+    @apply bg-gray-50 text-gray-600 text-xs font-medium uppercase tracking-wide;
+  }
+  
+  .table-card tbody tr { 
+    @apply transition-colors duration-100 hover:bg-gray-50 border-b border-gray-100 last:border-0;
+  }
+
+  /* ==================
+     BADGES SUTILES
+     ================== */
+  .badge { 
+    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium;
+  }
+  
+  .badge-primary { @apply bg-indigo-50 text-indigo-700 border border-indigo-100; }
+  .badge-success { @apply bg-emerald-50 text-emerald-700 border border-emerald-100; }
+  .badge-warning { @apply bg-amber-50 text-amber-700 border border-amber-100; }
+  .badge-error { @apply bg-red-50 text-red-700 border border-red-100; }
+  .badge-neutral { @apply bg-gray-100 text-gray-700 border border-gray-200; }
+}
+
+@layer utilities {
+  /* Animaciones mínimas y discretas */
+  .animate-in {
+    animation: slideIn 0.2s ease-out;
+  }
+  
+  .animate-fade {
+    animation: fadeIn 0.15s ease-out;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+html, body, #root { 
+  height: 100%; 
+  margin: 0;
+  padding: 0;
+}
