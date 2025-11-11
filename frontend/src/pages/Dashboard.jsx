@@ -19,10 +19,10 @@ const colorMap = {
 export default function Dashboard() {
   const { user } = useAuth()
   const cards = []
-  if (['preceptor','profesor'].includes(user.rol)) cards.push({ to: '/pasar-lista', title: 'Pasar lista', desc: 'Registrar asistencias de estudiantes' })
-  if (['preceptor','profesor','directivo','alumno','padre'].includes(user.rol)) cards.push({ to: '/informes', title: 'Informes', desc: 'Ver y descargar reportes' })
-  if (['preceptor','profesor','directivo','alumno'].includes(user.rol)) cards.push({ to: '/calendario', title: 'Calendario', desc: 'Eventos y actividades del curso' })
-  if (['preceptor','directivo'].includes(user.rol)) cards.push({ to: '/historial', title: 'Historial', desc: 'Cambios y auditoría del sistema' })
+  if (['admin', 'preceptor','profesor'].includes(user.rol)) cards.push({ to: '/pasar-lista', title: 'Pasar lista', desc: 'Registrar asistencias de estudiantes' })
+  if (['admin', 'preceptor','profesor','directivo','alumno','padre'].includes(user.rol)) cards.push({ to: '/informes', title: 'Informes', desc: 'Ver y descargar reportes' })
+  if (['admin', 'preceptor','profesor','directivo','alumno'].includes(user.rol)) cards.push({ to: '/calendario', title: 'Calendario', desc: 'Eventos y actividades del curso' })
+  if (['admin', 'preceptor','directivo'].includes(user.rol)) cards.push({ to: '/historial', title: 'Historial', desc: 'Cambios y auditoría del sistema' })
   
   return (
     <div className="space-y-6">

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
@@ -66,9 +66,30 @@ export default function Login() {
               {error}
             </div>
           )}
-          <button className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3 text-base font-medium bg-primary-600 text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors shadow-sm">
-            Iniciar sesión
-          </button>
+          <div className="space-y-3">
+            <button 
+              type="submit"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3 text-base font-medium bg-primary-600 text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors shadow-sm"
+            >
+              Iniciar sesión
+            </button>
+            
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500">¿No tienes una cuenta?</span>
+              </div>
+            </div>
+            
+            <Link 
+              to="/registro"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3 text-base font-medium text-primary-600 hover:text-primary-700 border border-primary-600 hover:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors"
+            >
+              Crear cuenta
+            </Link>
+          </div>
         </form>
       </div>
     </div>
