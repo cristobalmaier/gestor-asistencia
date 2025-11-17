@@ -1,56 +1,121 @@
 import { Router } from 'express';
-import { pool, query } from '../db.js';
+import { supabase, queryTable, insert, update as updateRecord, remove } from '../db.js';
 
 const router = Router();
 
 router.get('/', async (req, res) => {
   const { cursoId, alumnoId, materiaId, profesorId, preceptorId, desde, hasta } = req.query;
-  const conds = [];
-  const params = [];
-  if (alumnoId) { conds.push('a.id_alumno = ?'); params.push(alumnoId); }
-  if (materiaId) { conds.push('a.id_materia = ?'); params.push(materiaId); }
-  if (profesorId) { conds.push('a.id_profesor = ?'); params.push(profesorId); }
-  if (preceptorId) { conds.push('a.id_preceptor = ?'); params.push(preceptorId); }
-  if (desde) { conds.push('a.fecha >= ?'); params.push(desde); }
-  if (hasta) { conds.push('a.fecha <= ?'); params.push(hasta); }
-  if (cursoId) { conds.push('m.id_curso = ?'); params.push(cursoId); }
-  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  
   try {
-    const rows = await query(`
-      SELECT a.id_asistencia, a.id_alumno, u.nombre AS alumno_nombre, u.apellido AS alumno_apellido,
-             a.id_materia, m.nombre AS materia,
-             a.id_profesor, p.nombre AS profesor_nombre, p.apellido AS profesor_apellido,
-             a.id_preceptor, pr.nombre AS preceptor_nombre, pr.apellido AS preceptor_apellido,
-             a.fecha, a.estado, a.hora_registro, m.id_curso
-      FROM asistencias a
-      JOIN usuarios u ON u.id_usuario = a.id_alumno
-      JOIN materias m ON m.id_materia = a.id_materia
-      LEFT JOIN usuarios p ON p.id_usuario = a.id_profesor
-      LEFT JOIN usuarios pr ON pr.id_usuario = a.id_preceptor
-      ${where}
-      ORDER BY a.fecha DESC, alumno_apellido, alumno_nombre
-    `, params);
-    return res.json(rows);
-  } catch (e) { return res.status(500).json({ message: 'Error' }); }
+    let query = supabase
+      .from('asistencias')
+      .select(`
+        id,
+        id_alumno,
+        id_materia,
+        fecha,
+        presente,
+        justificada,
+        observaciones,
+        created_by,
+        alumno:alumno(id, nombre, apellido, dni),
+        materia:materias(id, nombre, curso_id)
+      `);
+    
+    if (alumnoId) query = query.eq('id_alumno', alumnoId);
+    if (materiaId) query = query.eq('id_materia', materiaId);
+    if (desde) query = query.gte('fecha', desde);
+    if (hasta) query = query.lte('fecha', hasta);
+    if (req.user?.id_usuario) query = query.eq('created_by', req.user.id_usuario);
+    
+    // Si hay cursoId, necesitamos filtrar por materia que pertenece al curso
+    if (cursoId) {
+      const { data: materias } = await supabase
+        .from('materias')
+        .select('id')
+        .eq('curso_id', cursoId);
+      
+      const materiaIds = materias?.map(m => m.id) || [];
+      if (materiaIds.length > 0) {
+        query = query.in('id_materia', materiaIds);
+      } else {
+        return res.json([]);
+      }
+    }
+    
+    query = query.order('fecha', { ascending: false });
+    
+    const { data, error } = await query;
+    
+    if (error) throw error;
+    
+    // Transformar datos al formato esperado por el frontend
+    const transformed = data.map(a => ({
+      id_asistencia: a.id,
+      id_alumno: a.id_alumno,
+      alumno_nombre: a.alumno?.nombre || '',
+      alumno_apellido: a.alumno?.apellido || '',
+      id_materia: a.id_materia,
+      materia: a.materia?.nombre || '',
+      fecha: a.fecha,
+      estado: a.presente ? 'Presente' : (a.justificada ? 'Justificado' : 'Ausente'),
+      justificada: a.justificada,
+      observaciones: a.observaciones
+    }));
+    
+    return res.json(transformed);
+  } catch (e) {
+    console.error('Error en GET /asistencias:', e);
+    return res.status(500).json({ message: 'Error' });
+  }
 });
 
 router.get('/dia', async (req, res) => {
   const { cursoId, materiaId, fecha } = req.query;
-  if (!cursoId || !materiaId || !fecha) return res.status(400).json({ message: 'cursoId, materiaId y fecha son requeridos' });
+  if (!cursoId || !materiaId || !fecha) {
+    return res.status(400).json({ message: 'cursoId, materiaId y fecha son requeridos' });
+  }
+  
   try {
-    const alumnos = await query(`
-      SELECT u.id_usuario AS id_alumno, u.nombre, u.apellido
-      FROM alumnos_cursos ac JOIN usuarios u ON u.id_usuario = ac.id_alumno
-      WHERE ac.id_curso = ?
-      ORDER BY u.apellido, u.nombre
-    `, [cursoId]);
-    const asist = await query(`
-      SELECT id_alumno, estado FROM asistencias WHERE id_materia = ? AND fecha = ?
-    `, [materiaId, fecha]);
-    const map = new Map(asist.map(r => [r.id_alumno, r.estado]));
-    const data = alumnos.map(a => ({ ...a, estado: map.get(a.id_alumno) || null }));
+    // Obtener alumnos del curso
+    const { data: alumnos, error: alumnosError } = await supabase
+      .from('alumno')
+      .select('id, nombre, apellido')
+      .eq('id_curso', cursoId)
+      .order('apellido')
+      .order('nombre');
+    
+    if (alumnosError) throw alumnosError;
+    
+    // Obtener asistencias del día
+    const { data: asistencias, error: asistError } = await supabase
+      .from('asistencias')
+      .select('id_alumno, presente, justificada')
+      .eq('id_materia', materiaId)
+      .eq('fecha', fecha);
+    
+    if (asistError) throw asistError;
+    
+    const asistMap = new Map();
+    asistencias.forEach(a => {
+      let estado = 'Ausente';
+      if (a.presente) estado = 'Presente';
+      else if (a.justificada) estado = 'Justificado';
+      asistMap.set(a.id_alumno, estado);
+    });
+    
+    const data = alumnos.map(a => ({
+      id_alumno: a.id,
+      nombre: a.nombre,
+      apellido: a.apellido,
+      estado: asistMap.get(a.id) || null
+    }));
+    
     return res.json({ alumnos: data });
-  } catch (e) { return res.status(500).json({ message: 'Error' }); }
+  } catch (e) {
+    console.error('Error en GET /asistencias/dia:', e);
+    return res.status(500).json({ message: 'Error' });
+  }
 });
 
 router.post('/pasar-lista', async (req, res) => {
@@ -58,53 +123,106 @@ router.post('/pasar-lista', async (req, res) => {
   if (!cursoId || !materiaId || !fecha || !Array.isArray(items)) {
     return res.status(400).json({ message: 'cursoId, materiaId, fecha, items requeridos' });
   }
-  const conn = await pool.getConnection();
+  
   try {
-    await conn.beginTransaction();
+    // Verificar que el usuario tenga permisos
+    if (!req.user) {
+      return res.status(401).json({ message: 'No autenticado' });
+    }
+    
+    const operations = [];
+    
     for (const it of items) {
       const { alumnoId, estado } = it;
       if (!alumnoId || !estado) continue;
-      const [belongs] = await conn.execute('SELECT 1 FROM alumnos_cursos WHERE id_alumno = ? AND id_curso = ? LIMIT 1', [alumnoId, cursoId]);
-      if (belongs.length === 0) continue;
-      await conn.execute('DELETE FROM asistencias WHERE id_alumno = ? AND id_materia = ? AND fecha = ?', [alumnoId, materiaId, fecha]);
-      const rol = req.user?.rol;
-      const id_profesor = rol === 'profesor' ? req.user.id_usuario : null;
-      const id_preceptor = rol === 'preceptor' ? req.user.id_usuario : null;
-      await conn.execute(
-        'INSERT INTO asistencias (id_alumno, id_materia, id_profesor, id_preceptor, fecha, estado) VALUES (?,?,?,?,?,?)',
-        [alumnoId, materiaId, id_profesor, id_preceptor, fecha, estado]
-      );
+      
+      // Verificar que el alumno pertenece al curso
+      const { data: alumno } = await supabase
+        .from('alumno')
+        .select('id')
+        .eq('id', alumnoId)
+        .eq('id_curso', cursoId)
+        .single();
+      
+      if (!alumno) continue;
+      
+      // Determinar presente y justificada según el estado
+      const presente = estado === 'Presente';
+      const justificada = estado === 'Justificado';
+      
+      // Eliminar asistencia existente si existe
+      await supabase
+        .from('asistencias')
+        .delete()
+        .eq('id_alumno', alumnoId)
+        .eq('id_materia', materiaId)
+        .eq('fecha', fecha);
+      
+      // Insertar nueva asistencia
+      const { error: insertError } = await supabase
+        .from('asistencias')
+        .insert({
+          id_alumno: alumnoId,
+          id_materia: materiaId,
+          fecha: fecha,
+          presente: presente,
+          justificada: justificada,
+          created_by: req.user.id_usuario
+        });
+      
+      if (insertError) {
+        console.error('Error insertando asistencia:', insertError);
+      }
     }
-    await conn.execute('INSERT INTO historial (id_usuario, accion) VALUES (?, ?)', [req.user.id_usuario, JSON.stringify({ tipo: 'CARGA_LISTA', cursoId, materiaId, fecha, cantidad: items.length })]);
-    await conn.commit();
+    
     return res.json({ ok: true });
   } catch (e) {
-    try { await conn.rollback(); } catch {}
+    console.error('Error en POST /asistencias/pasar-lista:', e);
     return res.status(500).json({ message: 'Error' });
-  } finally { conn.release(); }
+  }
 });
 
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
   const { estado } = req.body || {};
   if (!estado) return res.status(400).json({ message: 'estado requerido' });
-  const conn = await pool.getConnection();
+  
   try {
-    await conn.beginTransaction();
-    const [prevRows] = await conn.execute('SELECT * FROM asistencias WHERE id_asistencia = ? FOR UPDATE', [id]);
-    if (!prevRows.length) { await conn.rollback(); return res.status(404).json({ message: 'No encontrada' }); }
-    const prev = prevRows[0];
-    const rol = req.user?.rol;
-    const id_profesor = rol === 'profesor' ? req.user.id_usuario : prev.id_profesor;
-    const id_preceptor = rol === 'preceptor' ? req.user.id_usuario : prev.id_preceptor;
-    await conn.execute('UPDATE asistencias SET estado = ?, id_profesor = ?, id_preceptor = ? WHERE id_asistencia = ?', [estado, id_profesor, id_preceptor, id]);
-    await conn.execute('INSERT INTO historial (id_usuario, accion) VALUES (?, ?)', [req.user.id_usuario, JSON.stringify({ tipo: 'MODIFICA_ASISTENCIA', id, antes: prev.estado, despues: estado })]);
-    await conn.commit();
+    if (!req.user) {
+      return res.status(401).json({ message: 'No autenticado' });
+    }
+    
+    // Obtener asistencia actual
+    const { data: asistencia, error: fetchError } = await supabase
+      .from('asistencias')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (fetchError || !asistencia) {
+      return res.status(404).json({ message: 'No encontrada' });
+    }
+    
+    // Actualizar estado
+    const presente = estado === 'Presente';
+    const justificada = estado === 'Justificado';
+    
+    const { error: updateError } = await supabase
+      .from('asistencias')
+      .update({
+        presente: presente,
+        justificada: justificada,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+    
+    if (updateError) throw updateError;
+    
     return res.json({ ok: true });
   } catch (e) {
-    try { await conn.rollback(); } catch {}
+    console.error('Error en PUT /asistencias/:id:', e);
     return res.status(500).json({ message: 'Error' });
-  } finally { conn.release(); }
+  }
 });
 
 export default router;

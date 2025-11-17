@@ -1,9 +1,16 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { ClipboardCheck, Calendar, FileText, History, LogOut, LayoutDashboard } from 'lucide-react'
+import { ClipboardCheck, Calendar, FileText, History, LogOut, LayoutDashboard, Users } from 'lucide-react'
 
 const itemsByRole = (rol) => {
   const base = [{ to: '/', label: 'Inicio', icon: LayoutDashboard }]
+  if (rol === 'admin') return [...base,
+    { to: '/pasar-lista', label: 'Pasar lista', icon: ClipboardCheck },
+    { to: '/informes', label: 'Informes', icon: FileText },
+    { to: '/calendario', label: 'Calendario', icon: Calendar },
+    { to: '/historial', label: 'Historial', icon: History },
+    { to: '/usuarios', label: 'Usuarios', icon: Users },
+  ]
   if (rol === 'preceptor') return [...base,
     { to: '/pasar-lista', label: 'Pasar lista', icon: ClipboardCheck },
     { to: '/informes', label: 'Informes', icon: FileText },

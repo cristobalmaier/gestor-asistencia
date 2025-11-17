@@ -5,6 +5,7 @@ import PasarLista from './pages/PasarLista.jsx'
 import Informes from './pages/Informes.jsx'
 import Calendario from './pages/Calendario.jsx'
 import Historial from './pages/Historial.jsx'
+import Usuarios from './pages/Usuarios.jsx'
 import { ProtectedRoute } from './components/ProtectedRoute.jsx'
 import Layout from './components/Layout.jsx'
 
@@ -17,6 +18,7 @@ export default function App() {
       <Route path="/informes" element={<ProtectedRoute><Layout><Informes /></Layout></ProtectedRoute>} />
       <Route path="/calendario" element={<ProtectedRoute><Layout><Calendario /></Layout></ProtectedRoute>} />
       <Route path="/historial" element={<ProtectedRoute><Layout><Historial /></Layout></ProtectedRoute>} />
+      <Route path="/usuarios" element={<ProtectedRoute><Layout><Usuarios /></Layout></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

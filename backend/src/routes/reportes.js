@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../db.js';
+import { supabase } from '../db.js';
 import { Parser } from 'json2csv';
 import ExcelJS from 'exceljs';
 import PdfPrinter from 'pdfmake';
@@ -9,41 +9,87 @@ import { es } from 'date-fns/locale';
 const router = Router();
 
 router.get('/curso', async (req, res) => {
-  const { cursoId, desde, hasta, materiaId, profesorId, format } = req.query;
+  const { cursoId, desde, hasta, materiaId, profesorId, format: formatType } = req.query;
   if (!cursoId) return res.status(400).json({ message: 'cursoId requerido' });
-  const conds = ['m.id_curso = ?'];
-  const params = [cursoId];
-  if (desde) { conds.push('a.fecha >= ?'); params.push(desde); }
-  if (hasta) { conds.push('a.fecha <= ?'); params.push(hasta); }
-  if (materiaId) { conds.push('a.id_materia = ?'); params.push(materiaId); }
-  if (profesorId) { conds.push('a.id_profesor = ?'); params.push(profesorId); }
-  const where = `WHERE ${conds.join(' AND ')}`;
+  
   try {
-    const rows = await query(`
-      SELECT u.id_usuario AS id_alumno, u.apellido, u.nombre,
-        SUM(a.estado='Presente') AS presentes,
-        SUM(a.estado='Ausente') AS ausentes,
-        SUM(a.estado='Tarde') AS tardes,
-        SUM(a.estado='Justificado') AS justificados,
-        COUNT(*) AS total
-      FROM asistencias a
-      JOIN usuarios u ON u.id_usuario = a.id_alumno
-      JOIN materias m ON m.id_materia = a.id_materia
-      ${where}
-      GROUP BY u.id_usuario, u.apellido, u.nombre
-      ORDER BY u.apellido, u.nombre
-    `, params);
-    if (format === 'csv') {
+    // Obtener materias del curso
+    let materiaQuery = supabase
+      .from('materias')
+      .select('id')
+      .eq('curso_id', cursoId);
+    
+    if (materiaId) {
+      materiaQuery = materiaQuery.eq('id', materiaId);
+    }
+    
+    const { data: materias } = await materiaQuery;
+    const materiaIds = materias?.map(m => m.id) || [];
+    
+    if (materiaIds.length === 0) {
+      return formatType ? res.status(404).json({ message: 'No hay datos' }) : res.json([]);
+    }
+    
+    // Obtener asistencias
+    let asistQuery = supabase
+      .from('asistencias')
+      .select(`
+        id_alumno,
+        presente,
+        justificada,
+        alumno:alumno(id, nombre, apellido)
+      `)
+      .in('id_materia', materiaIds);
+    
+    if (desde) asistQuery = asistQuery.gte('fecha', desde);
+    if (hasta) asistQuery = asistQuery.lte('fecha', hasta);
+    
+    const { data: asistencias, error } = await asistQuery;
+    if (error) throw error;
+    
+    // Agrupar por alumno
+    const alumnosMap = new Map();
+    
+    asistencias.forEach(a => {
+      const alumnoId = a.id_alumno;
+      if (!alumnosMap.has(alumnoId)) {
+        alumnosMap.set(alumnoId, {
+          id_alumno: alumnoId,
+          nombre: a.alumno?.nombre || '',
+          apellido: a.alumno?.apellido || '',
+          presentes: 0,
+          ausentes: 0,
+          tardes: 0,
+          justificados: 0,
+          total: 0
+        });
+      }
+      
+      const alumno = alumnosMap.get(alumnoId);
+      alumno.total++;
+      
+      if (a.presente) {
+        alumno.presentes++;
+      } else if (a.justificada) {
+        alumno.justificados++;
+      } else {
+        alumno.ausentes++;
+      }
+    });
+    
+    const rows = Array.from(alumnosMap.values())
+      .sort((a, b) => a.apellido.localeCompare(b.apellido) || a.nombre.localeCompare(b.nombre));
+    
+    if (formatType === 'csv') {
       const parser = new Parser({ fields: ['id_alumno','apellido','nombre','presentes','ausentes','tardes','justificados','total'] });
       const csv = parser.parse(rows);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="reporte_curso.csv"');
       return res.send(csv);
-    } else if (format === 'excel') {
+    } else if (formatType === 'excel') {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Reporte');
       
-      // Headers
       worksheet.columns = [
         { header: 'Apellido', key: 'apellido', width: 20 },
         { header: 'Nombre', key: 'nombre', width: 20 },
@@ -54,19 +100,14 @@ router.get('/curso', async (req, res) => {
         { header: 'Total', key: 'total', width: 10 }
       ];
       
-      // Add data
       worksheet.addRows(rows);
-      
-      // Style header
       worksheet.getRow(1).font = { bold: true };
       
-      // Write to buffer
       const buffer = await workbook.xlsx.writeBuffer();
-      
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename=reporte_curso.xlsx');
       return res.send(buffer);
-    } else if (format === 'pdf') {
+    } else if (formatType === 'pdf') {
       const fonts = {
         Helvetica: {
           normal: 'Helvetica',
@@ -128,60 +169,71 @@ router.get('/curso', async (req, res) => {
       });
     }
     return res.json(rows);
-  } catch (e) { return res.status(500).json({ message: 'Error' }); }
+  } catch (e) {
+    console.error('Error en GET /reportes/curso:', e);
+    return res.status(500).json({ message: 'Error' });
+  }
 });
 
 router.get('/alumno', async (req, res) => {
-  const { alumnoId, desde, hasta, materiaId, format } = req.query;
+  const { alumnoId, desde, hasta, materiaId, format: formatType } = req.query;
   const uid = alumnoId || req.user?.id_usuario;
   if (!uid) return res.status(400).json({ message: 'alumnoId requerido' });
-  const conds = ['a.id_alumno = ?'];
-  const params = [uid];
-  if (desde) { conds.push('a.fecha >= ?'); params.push(desde); }
-  if (hasta) { conds.push('a.fecha <= ?'); params.push(hasta); }
-  if (materiaId) { conds.push('a.id_materia = ?'); params.push(materiaId); }
-  const where = `WHERE ${conds.join(' AND ')}`;
+  
   try {
-    const rows = await query(`
-      SELECT a.fecha, m.nombre AS materia, a.estado
-      FROM asistencias a
-      JOIN materias m ON m.id_materia = a.id_materia
-      ${where}
-      ORDER BY a.fecha DESC, m.nombre
-    `, params);
-    if (format === 'csv') {
+    let query = supabase
+      .from('asistencias')
+      .select(`
+        fecha,
+        presente,
+        justificada,
+        materia:materias(id, nombre)
+      `)
+      .eq('id_alumno', uid);
+    
+    if (desde) query = query.gte('fecha', desde);
+    if (hasta) query = query.lte('fecha', hasta);
+    if (materiaId) query = query.eq('id_materia', materiaId);
+    
+    query = query.order('fecha', { ascending: false });
+    
+    const { data: asistencias, error } = await query;
+    if (error) throw error;
+    
+    const rows = asistencias.map(a => ({
+      fecha: a.fecha,
+      materia: a.materia?.nombre || '',
+      estado: a.presente ? 'Presente' : (a.justificada ? 'Justificado' : 'Ausente')
+    }));
+    
+    if (formatType === 'csv') {
       const parser = new Parser({ fields: ['fecha','materia','estado'] });
       const csv = parser.parse(rows);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="reporte_alumno.csv"');
       return res.send(csv);
-    } else if (format === 'excel') {
+    } else if (formatType === 'excel') {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Reporte');
       
-      // Headers
       worksheet.columns = [
         { header: 'Fecha', key: 'fecha', width: 15 },
         { header: 'Materia', key: 'materia', width: 40 },
         { header: 'Estado', key: 'estado', width: 15 }
       ];
       
-      // Add data with formatted dates
       worksheet.addRows(rows.map(row => ({
         ...row,
         fecha: format(new Date(row.fecha), 'dd/MM/yyyy', { locale: es })
       })));
       
-      // Style header
       worksheet.getRow(1).font = { bold: true };
       
-      // Write to buffer
       const buffer = await workbook.xlsx.writeBuffer();
-      
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename=reporte_alumno.xlsx');
       return res.send(buffer);
-    } else if (format === 'pdf') {
+    } else if (formatType === 'pdf') {
       const fonts = {
         Helvetica: {
           normal: 'Helvetica',
@@ -239,7 +291,122 @@ router.get('/alumno', async (req, res) => {
       });
     }
     return res.json(rows);
-  } catch (e) { return res.status(500).json({ message: 'Error' }); }
+  } catch (e) {
+    console.error('Error en GET /reportes/alumno:', e);
+    return res.status(500).json({ message: 'Error' });
+  }
+});
+
+// Dashboard statistics endpoint
+router.get('/dashboard', async (req, res) => {
+  try {
+    // Calcular fecha de hace 30 días
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const dateStr = thirtyDaysAgo.toISOString().split('T')[0];
+    
+    // Get general attendance percentage
+    const { data: asistencias, error: asistError } = await supabase
+      .from('asistencias')
+      .select('presente, justificada')
+      .gte('fecha', dateStr);
+    
+    if (asistError) throw asistError;
+    
+    const total = asistencias.length;
+    const presentes = asistencias.filter(a => a.presente).length;
+    const ausentes = asistencias.filter(a => !a.presente && !a.justificada).length;
+    const justificados = asistencias.filter(a => a.justificada).length;
+    const porcentaje = total > 0 ? Math.round((presentes * 100.0 / total) * 100) / 100 : 0;
+    
+    const attendanceStats = {
+      total_asistencias: total,
+      presentes,
+      ausentes,
+      tardes: 0, // No disponible en el nuevo esquema
+      justificados,
+      porcentaje_asistencia: porcentaje
+    };
+    
+    // Get students with most absences in the last 30 days
+    const { data: ausencias, error: ausError } = await supabase
+      .from('asistencias')
+      .select(`
+        id_alumno,
+        alumno:alumno(id, nombre, apellido, id_curso, curso:curso(id, curso))
+      `)
+      .eq('presente', false)
+      .eq('justificada', false)
+      .gte('fecha', dateStr);
+    
+    if (ausError) throw ausError;
+    
+    // Agrupar por alumno
+    const alumnosMap = new Map();
+    ausencias.forEach(a => {
+      const id = a.id_alumno;
+      if (!alumnosMap.has(id)) {
+        alumnosMap.set(id, {
+          id_usuario: id,
+          nombre: a.alumno?.nombre || '',
+          apellido: a.alumno?.apellido || '',
+          total_inasistencias: 0,
+          curso_nombre: a.alumno?.curso?.curso || '',
+          anio: null,
+          division: null
+        });
+      }
+      alumnosMap.get(id).total_inasistencias++;
+    });
+    
+    const studentsWithMostAbsences = Array.from(alumnosMap.values())
+      .sort((a, b) => b.total_inasistencias - a.total_inasistencias)
+      .slice(0, 5);
+    
+    // Get upcoming events (next 30 days)
+    const today = new Date().toISOString().split('T')[0];
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    const futureDateStr = thirtyDaysFromNow.toISOString().split('T')[0];
+    
+    const { data: eventos, error: eventosError } = await supabase
+      .from('eventos')
+      .select(`
+        id,
+        titulo,
+        descripcion,
+        fecha_inicio,
+        id_curso,
+        curso:curso(id, curso)
+      `)
+      .gte('fecha_inicio', today)
+      .lte('fecha_inicio', futureDateStr)
+      .order('fecha_inicio', { ascending: true })
+      .limit(10);
+    
+    if (eventosError) throw eventosError;
+    
+    const upcomingEvents = eventos.map(e => ({
+      id_evento: e.id,
+      fecha: e.fecha_inicio.split('T')[0],
+      descripcion: e.titulo + (e.descripcion ? ` - ${e.descripcion}` : ''),
+      id_curso: e.id_curso,
+      curso_info: e.curso ? e.curso.curso : 'General'
+    }));
+    
+    res.json({
+      attendanceStats,
+      studentsWithMostAbsences,
+      upcomingEvents
+    });
+  } catch (e) {
+    console.error('Error fetching dashboard statistics:', e);
+    console.error('Stack:', e.stack);
+    return res.status(500).json({
+      message: 'Error al obtener estadísticas del dashboard',
+      error: process.env.NODE_ENV === 'development' ? e.message : undefined
+    });
+  }
 });
 
 export default router;
