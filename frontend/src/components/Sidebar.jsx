@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+<<<<<<< HEAD
 import { ClipboardCheck, Calendar, FileText, History, LogOut, LayoutDashboard, Users } from 'lucide-react'
 
 const itemsByRole = (rol) => {
@@ -12,28 +13,63 @@ const itemsByRole = (rol) => {
     { to: '/usuarios', label: 'Usuarios', icon: Users },
   ]
   if (rol === 'preceptor') return [...base,
+=======
+import { ClipboardCheck, Calendar, FileText, History, LogOut, LayoutDashboard, Users, Settings } from 'lucide-react'
+
+const itemsByRole = (rol) => {
+  const base = [{ to: '/', label: 'Inicio', icon: LayoutDashboard }]
+  
+  // Admin tiene acceso a todo
+  if (rol === 'admin' || rol === 'root') {
+    return [
+      ...base,
+      { to: '/pasar-lista', label: 'Pasar lista', icon: ClipboardCheck },
+      { to: '/informes', label: 'Informes', icon: FileText },
+      { to: '/calendario', label: 'Calendario', icon: Calendar },
+      { to: '/historial', label: 'Historial', icon: History },
+      { 
+        type: 'divider',
+        label: 'Administración'
+      },
+      { to: '/admin/usuarios', label: 'Gestión de Usuarios', icon: Users },
+      { to: '/admin/configuracion', label: 'Configuración', icon: Settings }
+    ]
+  }
+  
+  if (rol === 'preceptor') return [
+    ...base,
+>>>>>>> 85a3886e9ac1e62fd0c635a261412016d991e7b4
     { to: '/pasar-lista', label: 'Pasar lista', icon: ClipboardCheck },
     { to: '/informes', label: 'Informes', icon: FileText },
     { to: '/calendario', label: 'Calendario', icon: Calendar },
     { to: '/historial', label: 'Historial', icon: History },
   ]
-  if (rol === 'profesor') return [...base,
+  
+  if (rol === 'profesor') return [
+    ...base,
     { to: '/pasar-lista', label: 'Pasar lista', icon: ClipboardCheck },
     { to: '/informes', label: 'Informes', icon: FileText },
     { to: '/calendario', label: 'Calendario', icon: Calendar },
   ]
-  if (rol === 'directivo') return [...base,
+  
+  if (rol === 'directivo') return [
+    ...base,
     { to: '/informes', label: 'Informes', icon: FileText },
     { to: '/calendario', label: 'Calendario', icon: Calendar },
     { to: '/historial', label: 'Historial', icon: History },
   ]
-  if (rol === 'alumno') return [...base,
+  
+  if (rol === 'alumno') return [
+    ...base,
     { to: '/informes', label: 'Informes', icon: FileText },
     { to: '/calendario', label: 'Calendario', icon: Calendar },
   ]
-  if (rol === 'padre') return [...base,
+  
+  if (rol === 'padre') return [
+    ...base,
     { to: '/informes', label: 'Informes', icon: FileText },
   ]
+  
   return base
 }
 

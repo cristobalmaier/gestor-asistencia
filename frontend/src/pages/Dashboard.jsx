@@ -38,6 +38,7 @@ export default function Dashboard() {
   }
 
   const cards = []
+<<<<<<< HEAD
   if (['admin','preceptor','profesor'].includes(user?.rol)) cards.push({ to: '/pasar-lista', title: 'Pasar lista', desc: 'Registrar asistencias de estudiantes' })
   if (['admin','preceptor','profesor','directivo','alumno','padre'].includes(user?.rol)) cards.push({ to: '/informes', title: 'Informes', desc: 'Ver y descargar reportes' })
   if (['admin','preceptor','profesor','directivo','alumno'].includes(user?.rol)) cards.push({ to: '/calendario', title: 'Calendario', desc: 'Eventos y actividades del curso' })
@@ -84,6 +85,13 @@ export default function Dashboard() {
     })
   }
 
+=======
+  if (['admin', 'preceptor','profesor'].includes(user.rol)) cards.push({ to: '/pasar-lista', title: 'Pasar lista', desc: 'Registrar asistencias de estudiantes' })
+  if (['admin', 'preceptor','profesor','directivo','alumno','padre'].includes(user.rol)) cards.push({ to: '/informes', title: 'Informes', desc: 'Ver y descargar reportes' })
+  if (['admin', 'preceptor','profesor','directivo','alumno'].includes(user.rol)) cards.push({ to: '/calendario', title: 'Calendario', desc: 'Eventos y actividades del curso' })
+  if (['admin', 'preceptor','directivo'].includes(user.rol)) cards.push({ to: '/historial', title: 'Historial', desc: 'Cambios y auditoría del sistema' })
+  
+>>>>>>> 85a3886e9ac1e62fd0c635a261412016d991e7b4
   return (
     <div className="space-y-6">
       <div>
