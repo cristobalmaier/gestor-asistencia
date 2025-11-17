@@ -1,10 +1,9 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-<<<<<<< HEAD
-export function ProtectedRoute({ children }) {
-  const { token, loading } = useAuth()
-  const loc = useLocation()
+export function ProtectedRoute({ children, requiredRole }) {
+  const { user, loading, hasRole } = useAuth()
+  const location = useLocation()
   
   if (loading) {
     return (
@@ -17,25 +16,15 @@ export function ProtectedRoute({ children }) {
     )
   }
   
-  if (!token) return <Navigate to="/login" state={{ from: loc }} replace />
-=======
-export function ProtectedRoute({ children, requiredRole }) {
-  const { isAuthenticated, hasRole, loading } = useAuth()
-  const location = useLocation()
-
-  if (loading) {
-    return null; // O un componente de carga
-  }
-
-  if (!isAuthenticated) {
+  // Si el usuario no está autenticado, redirigir al login
+  if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
-
-  // Si se requiere un rol específico y el usuario no lo tiene, redirigir
+  
+  // Si se requiere un rol específico y el usuario no lo tiene, redirigir al inicio
   if (requiredRole && !hasRole(requiredRole)) {
     return <Navigate to="/" replace />
   }
-
->>>>>>> 85a3886e9ac1e62fd0c635a261412016d991e7b4
+  
   return children
 }

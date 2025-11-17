@@ -1,8 +1,18 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useState, useEffect } from 'react'
-import { ClipboardCheck, FileText, Calendar, History, ArrowRight, Users, TrendingUp, AlertTriangle, CalendarDays, UserCog } from 'lucide-react'
-import { getDashboardStats } from '../services/api'
+import { supabase } from '../lib/supabase'
+import { 
+  ClipboardCheck, 
+  FileText, 
+  Calendar, 
+  History, 
+  ArrowRight, 
+  TrendingUp, 
+  AlertTriangle, 
+  CalendarDays, 
+  UserCog 
+} from 'lucide-react'
 
 const iconMap = {
   'Pasar lista': ClipboardCheck,
@@ -22,7 +32,15 @@ const colorMap = {
 
 export default function Dashboard() {
   const { user } = useAuth()
-  const [stats, setStats] = useState(null)
+  
+  // Estado para las estadísticas
+  const [stats, setStats] = useState({
+    totalAsistencias: 0,
+    totalInasistencias: 0,
+    totalJustificadas: 0,
+    ultimaActualizacion: null
+  })
+  
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -31,67 +49,107 @@ export default function Dashboard() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-          <p className="mt-4 text-gray-600">Cargando...</p>
+          <p className="mt-4 text-gray-600">Cargando información del usuario...</p>
         </div>
       </div>
     )
   }
 
+  // Definir las tarjetas basadas en el rol del usuario
   const cards = []
-<<<<<<< HEAD
-  if (['admin','preceptor','profesor'].includes(user?.rol)) cards.push({ to: '/pasar-lista', title: 'Pasar lista', desc: 'Registrar asistencias de estudiantes' })
-  if (['admin','preceptor','profesor','directivo','alumno','padre'].includes(user?.rol)) cards.push({ to: '/informes', title: 'Informes', desc: 'Ver y descargar reportes' })
-  if (['admin','preceptor','profesor','directivo','alumno'].includes(user?.rol)) cards.push({ to: '/calendario', title: 'Calendario', desc: 'Eventos y actividades del curso' })
-  if (['admin','preceptor','directivo'].includes(user?.rol)) cards.push({ to: '/historial', title: 'Historial', desc: 'Cambios y auditoría del sistema' })
-  if (['admin'].includes(user?.rol)) cards.push({ to: '/usuarios', title: 'Usuarios', desc: 'Gestionar usuarios del sistema' })
+  const userRole = user?.userRole || ''
+  
+  // Agregar tarjetas según el rol
+  if (['admin', 'preceptor', 'profesor'].includes(userRole)) {
+    cards.push({ 
+      to: '/pasar-lista', 
+      title: 'Pasar lista', 
+      desc: 'Registrar asistencias de estudiantes' 
+    })
+  }
+  
+  if (['admin', 'preceptor', 'profesor', 'directivo', 'alumno', 'padre'].includes(userRole)) {
+    cards.push({ 
+      to: '/informes', 
+      title: 'Informes', 
+      desc: 'Ver y descargar reportes' 
+    })
+  }
+  
+  if (['admin', 'preceptor', 'profesor', 'directivo', 'alumno'].includes(userRole)) {
+    cards.push({ 
+      to: '/calendario', 
+      title: 'Calendario', 
+      desc: 'Eventos y actividades del curso' 
+    })
+  }
+  
+  if (['admin', 'preceptor', 'directivo'].includes(userRole)) {
+    cards.push({ 
+      to: '/historial', 
+      title: 'Historial', 
+      desc: 'Cambios y auditoría del sistema' 
+    })
+  }
+  
+  if (['admin'].includes(userRole)) {
+    cards.push({ 
+      to: '/admin/usuarios', 
+      title: 'Usuarios', 
+      desc: 'Gestionar usuarios del sistema' 
+    })
+  }
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         setLoading(true)
         setError(null)
-        const data = await getDashboardStats()
-        setStats(data)
-      } catch (err) {
-        console.error('Error fetching dashboard stats:', err)
-        // Si es un error 401, el interceptor ya manejará la redirección
-        if (err.response?.status === 401) {
-          // No establecer error aquí, el interceptor redirigirá
-          return
+        
+        if (['admin', 'preceptor', 'directivo'].includes(userRole)) {
+          // Obtener estadísticas de asistencias desde Supabase
+          const { data, error } = await supabase
+            .from('asistencias')
+            .select('estado, fecha')
+            .order('fecha', { ascending: false })
+            .limit(100) // Limitar a 100 registros para el cálculo
+          
+          if (error) throw error
+          
+          // Calcular estadísticas
+          const totalAsistencias = data.filter(a => a.estado === 'presente').length
+          const totalInasistencias = data.filter(a => a.estado === 'ausente').length
+          const totalJustificadas = data.filter(a => a.estado === 'justificada').length
+          const ultimaActualizacion = data[0]?.fecha || new Date().toISOString()
+          
+          setStats({
+            totalAsistencias,
+            totalInasistencias,
+            totalJustificadas,
+            ultimaActualizacion
+          })
         }
-        const errorMessage = err.response?.data?.message || 
-                           err.message || 
-                           'Error al cargar las estadísticas'
-        setError(errorMessage)
+      } catch (err) {
+        console.error('Error al cargar estadísticas:', err)
+        setError('Error al cargar las estadísticas')
       } finally {
         setLoading(false)
       }
     }
 
-    // Solo cargar estadísticas si el usuario es admin
-    if (user?.rol === 'admin') {
-      fetchStats()
-    } else {
-      setLoading(false)
-    }
-  }, [user?.rol])
+    fetchStats()
+  }, [userRole])
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'No disponible'
     const date = new Date(dateString)
     return date.toLocaleDateString('es-ES', { 
       weekday: 'short', 
       day: 'numeric', 
-      month: 'short' 
+      month: 'short',
+      year: 'numeric'
     })
   }
-
-=======
-  if (['admin', 'preceptor','profesor'].includes(user.rol)) cards.push({ to: '/pasar-lista', title: 'Pasar lista', desc: 'Registrar asistencias de estudiantes' })
-  if (['admin', 'preceptor','profesor','directivo','alumno','padre'].includes(user.rol)) cards.push({ to: '/informes', title: 'Informes', desc: 'Ver y descargar reportes' })
-  if (['admin', 'preceptor','profesor','directivo','alumno'].includes(user.rol)) cards.push({ to: '/calendario', title: 'Calendario', desc: 'Eventos y actividades del curso' })
-  if (['admin', 'preceptor','directivo'].includes(user.rol)) cards.push({ to: '/historial', title: 'Historial', desc: 'Cambios y auditoría del sistema' })
-  
->>>>>>> 85a3886e9ac1e62fd0c635a261412016d991e7b4
   return (
     <div className="space-y-6">
       <div>
