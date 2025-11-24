@@ -2,16 +2,17 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { 
-  ClipboardCheck, 
-  FileText, 
-  Calendar, 
-  History, 
-  ArrowRight, 
-  TrendingUp, 
-  AlertTriangle, 
-  CalendarDays, 
-  UserCog 
+import {
+  ClipboardCheck,
+  FileText,
+  Calendar,
+  History,
+  ArrowRight,
+  TrendingUp,
+  AlertTriangle,
+  CalendarDays,
+  UserCog,
+  Users
 } from 'lucide-react'
 
 const iconMap = {
@@ -32,7 +33,7 @@ const colorMap = {
 
 export default function Dashboard() {
   const { user } = useAuth()
-  
+
   // Estado para las estadísticas
   const [stats, setStats] = useState({
     totalAsistencias: 0,
@@ -40,7 +41,7 @@ export default function Dashboard() {
     totalJustificadas: 0,
     ultimaActualizacion: null
   })
-  
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -58,45 +59,45 @@ export default function Dashboard() {
   // Definir las tarjetas basadas en el rol del usuario
   const cards = []
   const userRole = user?.userRole || ''
-  
+
   // Agregar tarjetas según el rol
   if (['admin', 'preceptor', 'profesor'].includes(userRole)) {
-    cards.push({ 
-      to: '/pasar-lista', 
-      title: 'Pasar lista', 
-      desc: 'Registrar asistencias de estudiantes' 
+    cards.push({
+      to: '/pasar-lista',
+      title: 'Pasar lista',
+      desc: 'Registrar asistencias de estudiantes'
     })
   }
-  
+
   if (['admin', 'preceptor', 'profesor', 'directivo', 'alumno', 'padre'].includes(userRole)) {
-    cards.push({ 
-      to: '/informes', 
-      title: 'Informes', 
-      desc: 'Ver y descargar reportes' 
+    cards.push({
+      to: '/informes',
+      title: 'Informes',
+      desc: 'Ver y descargar reportes'
     })
   }
-  
+
   if (['admin', 'preceptor', 'profesor', 'directivo', 'alumno'].includes(userRole)) {
-    cards.push({ 
-      to: '/calendario', 
-      title: 'Calendario', 
-      desc: 'Eventos y actividades del curso' 
+    cards.push({
+      to: '/calendario',
+      title: 'Calendario',
+      desc: 'Eventos y actividades del curso'
     })
   }
-  
+
   if (['admin', 'preceptor', 'directivo'].includes(userRole)) {
-    cards.push({ 
-      to: '/historial', 
-      title: 'Historial', 
-      desc: 'Cambios y auditoría del sistema' 
+    cards.push({
+      to: '/historial',
+      title: 'Historial',
+      desc: 'Cambios y auditoría del sistema'
     })
   }
-  
+
   if (['admin'].includes(userRole)) {
-    cards.push({ 
-      to: '/admin/usuarios', 
-      title: 'Usuarios', 
-      desc: 'Gestionar usuarios del sistema' 
+    cards.push({
+      to: '/admin/usuarios',
+      title: 'Usuarios',
+      desc: 'Gestionar usuarios del sistema'
     })
   }
 
@@ -105,7 +106,7 @@ export default function Dashboard() {
       try {
         setLoading(true)
         setError(null)
-        
+
         if (['admin', 'preceptor', 'directivo'].includes(userRole)) {
           // Obtener estadísticas de asistencias desde Supabase
           const { data, error } = await supabase
@@ -113,15 +114,15 @@ export default function Dashboard() {
             .select('estado, fecha')
             .order('fecha', { ascending: false })
             .limit(100) // Limitar a 100 registros para el cálculo
-          
+
           if (error) throw error
-          
+
           // Calcular estadísticas
           const totalAsistencias = data.filter(a => a.estado === 'presente').length
           const totalInasistencias = data.filter(a => a.estado === 'ausente').length
           const totalJustificadas = data.filter(a => a.estado === 'justificada').length
           const ultimaActualizacion = data[0]?.fecha || new Date().toISOString()
-          
+
           setStats({
             totalAsistencias,
             totalInasistencias,
@@ -143,9 +144,9 @@ export default function Dashboard() {
   const formatDate = (dateString) => {
     if (!dateString) return 'No disponible'
     const date = new Date(dateString)
-    return date.toLocaleDateString('es-ES', { 
-      weekday: 'short', 
-      day: 'numeric', 
+    return date.toLocaleDateString('es-ES', {
+      weekday: 'short',
+      day: 'numeric',
       month: 'short',
       year: 'numeric'
     })
@@ -262,7 +263,7 @@ export default function Dashboard() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Estudiantes con Mayor Inasistencia</h3>
             {loading ? (
               <div className="space-y-3">
-                {[1,2,3].map(i => (
+                {[1, 2, 3].map(i => (
                   <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center space-x-3">
                       <div className="w-10 h-10 bg-gray-200 animate-pulse rounded-full"></div>
@@ -307,7 +308,7 @@ export default function Dashboard() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Próximos Eventos</h3>
             {loading ? (
               <div className="space-y-3">
-                {[1,2,3].map(i => (
+                {[1, 2, 3].map(i => (
                   <div key={i} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
                     <div className="w-12 h-12 bg-gray-200 animate-pulse rounded-lg"></div>
                     <div className="flex-1">
@@ -345,16 +346,16 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-      
+
       {/* Action Cards */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {cards.map(c => {
           const Icon = iconMap[c.title]
           const iconColor = colorMap[c.title] || 'bg-primary-600'
           return (
-            <Link 
-              key={c.to} 
-              to={c.to} 
+            <Link
+              key={c.to}
+              to={c.to}
               className="group bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
             >
               <div className="flex items-start justify-between mb-4">

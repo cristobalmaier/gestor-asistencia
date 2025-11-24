@@ -1,111 +1,92 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import api from '../services/api';
 
 const AuthCtx = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Iniciar sesión con email y contraseña
+  // Iniciar sesión con email y contraseña usando el backend personalizado
   const login = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const response = await api.post('/auth/login', { email, password });
+      const { token, user: userData } = response.data;
 
-    if (error) throw error;
-    return data;
+      // Guardar token en localStorage
+      localStorage.setItem('token', token);
+
+      // Actualizar estado
+      setUser(userData);
+      setIsAuthenticated(true);
+
+      return response.data;
+    } catch (error) {
+      console.error('Error en login:', error);
+      throw error;
+    }
   };
 
   // Cerrar sesión
   const logout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    localStorage.removeItem('token');
     setUser(null);
-    setUserRole(null);
-  };
-
-  // Registrar nuevo usuario
-  const signUp = async (email, password, userData) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          nombre: userData.nombre,
-          apellido: userData.apellido,
-        },
-      },
-    });
-
-    if (error) throw error;
-    return data;
+    setIsAuthenticated(false);
   };
 
   // Verificar si el usuario tiene un rol específico
   const hasRole = (role) => {
-    if (!userRole) return false;
-    return userRole === role;
+    if (!user) return false;
+    return user.rol === role;
   };
 
   // Verificar si el usuario tiene alguno de los roles especificados
   const hasAnyRole = (roles) => {
-    if (!userRole) return false;
-    return roles.includes(userRole);
+    if (!user) return false;
+    return roles.includes(user.rol);
+  };
+
+  // Verificar si es admin
+  const isAdmin = () => {
+    return user?.rol === 'admin' || user?.is_admin === true;
   };
 
   useEffect(() => {
-    // Verificar la sesión actual al cargar
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    // Verificar si hay un token guardado al cargar
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token');
 
-    // Escuchar cambios en la autenticación
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          // Obtener el rol del usuario desde la tabla de perfiles
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', session.user.id)
-            .single();
-          
-          if (!error && profile) {
-            setUserRole(profile.role);
-          }
-        } else {
-          setUserRole(null);
+      if (token) {
+        try {
+          // Verificar el token con el backend
+          const response = await api.get('/auth/me');
+          setUser(response.data);
+          setIsAuthenticated(true);
+        } catch (error) {
+          console.error('Token inválido:', error);
+          localStorage.removeItem('token');
+          setUser(null);
+          setIsAuthenticated(false);
         }
-        
-        setLoading(false);
       }
-    );
 
-    return () => {
-      subscription?.unsubscribe();
+      setLoading(false);
     };
+
+    checkAuth();
   }, []);
 
   const value = {
     user,
-    session,
     loading,
     login,
     logout,
-    signUp,
-    userRole,
+    userRole: user?.rol,
     hasRole,
     hasAnyRole,
-    isAuthenticated: !!user,
+    isAdmin,
+    isAuthenticated,
   };
 
   return (
