@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { supabase, queryTable, insert, update as updateRecord, remove } from '../db.js';
+import { registrarAccion, ACCIONES, TABLAS } from '../utils/logger.js'; 
 
 const router = Router();
 
+// --- GET / ---
 router.get('/', async (req, res) => {
   const { cursoId, alumnoId, materiaId, profesorId, preceptorId, desde, hasta } = req.query;
-  
+
   try {
     let query = supabase
       .from('asistencias')
@@ -15,54 +17,71 @@ router.get('/', async (req, res) => {
         id_materia,
         fecha,
         presente,
+        tarde,
         justificada,
         observaciones,
         created_by,
         alumno:alumno(id, nombre, apellido, dni),
         materia:materias(id, nombre, curso_id)
       `);
-    
+
     if (alumnoId) query = query.eq('id_alumno', alumnoId);
     if (materiaId) query = query.eq('id_materia', materiaId);
     if (desde) query = query.gte('fecha', desde);
     if (hasta) query = query.lte('fecha', hasta);
     if (req.user?.id_usuario) query = query.eq('created_by', req.user.id_usuario);
-    
+
     // Si hay cursoId, necesitamos filtrar por materia que pertenece al curso
     if (cursoId) {
-      const { data: materias } = await supabase
+      const { data: materias, error: materiasError } = await supabase
         .from('materias')
         .select('id')
         .eq('curso_id', cursoId);
-      
+
+      if (materiasError) throw materiasError;
+
       const materiaIds = materias?.map(m => m.id) || [];
       if (materiaIds.length > 0) {
         query = query.in('id_materia', materiaIds);
       } else {
+        // Si no hay materias en el curso, el resultado debe ser vacío
         return res.json([]);
       }
     }
-    
+
     query = query.order('fecha', { ascending: false });
-    
+
     const { data, error } = await query;
-    
+
     if (error) throw error;
-    
+
     // Transformar datos al formato esperado por el frontend
-    const transformed = data.map(a => ({
-      id_asistencia: a.id,
-      id_alumno: a.id_alumno,
-      alumno_nombre: a.alumno?.nombre || '',
-      alumno_apellido: a.alumno?.apellido || '',
-      id_materia: a.id_materia,
-      materia: a.materia?.nombre || '',
-      fecha: a.fecha,
-      estado: a.presente ? 'Presente' : (a.justificada ? 'Justificado' : 'Ausente'),
-      justificada: a.justificada,
-      observaciones: a.observaciones
-    }));
-    
+    // Lógica de estados: Presente > Tarde > Justificado > Ausente
+    const transformed = data.map(a => {
+      let estado = 'Ausente';
+      if (a.presente) {
+        estado = 'Presente';
+      } else if (a.tarde) {
+        estado = 'Tarde';
+      } else if (a.justificada) {
+        estado = 'Justificado';
+      }
+
+      return {
+        id_asistencia: a.id,
+        id_alumno: a.id_alumno,
+        alumno_nombre: a.alumno?.nombre || '',
+        alumno_apellido: a.alumno?.apellido || '',
+        id_materia: a.id_materia,
+        materia: a.materia?.nombre || '',
+        fecha: a.fecha,
+        estado: estado,
+        tarde: a.tarde,
+        justificada: a.justificada,
+        observaciones: a.observaciones
+      };
+    });
+
     return res.json(transformed);
   } catch (e) {
     console.error('Error en GET /asistencias:', e);
@@ -70,12 +89,14 @@ router.get('/', async (req, res) => {
   }
 });
 
+
+// --- GET /dia ---
 router.get('/dia', async (req, res) => {
   const { cursoId, materiaId, fecha } = req.query;
   if (!cursoId || !materiaId || !fecha) {
     return res.status(400).json({ message: 'cursoId, materiaId y fecha son requeridos' });
   }
-  
+
   try {
     // Obtener alumnos del curso
     const { data: alumnos, error: alumnosError } = await supabase
@@ -84,33 +105,38 @@ router.get('/dia', async (req, res) => {
       .eq('id_curso', cursoId)
       .order('apellido')
       .order('nombre');
-    
+
     if (alumnosError) throw alumnosError;
-    
+
     // Obtener asistencias del día
     const { data: asistencias, error: asistError } = await supabase
       .from('asistencias')
-      .select('id_alumno, presente, justificada')
+      .select('id_alumno, presente, tarde, justificada')
       .eq('id_materia', materiaId)
       .eq('fecha', fecha);
-    
+
     if (asistError) throw asistError;
-    
+
     const asistMap = new Map();
     asistencias.forEach(a => {
       let estado = 'Ausente';
-      if (a.presente) estado = 'Presente';
-      else if (a.justificada) estado = 'Justificado';
+      if (a.presente) {
+        estado = 'Presente';
+      } else if (a.tarde) {
+        estado = 'Tarde';
+      } else if (a.justificada) {
+        estado = 'Justificado';
+      }
       asistMap.set(a.id_alumno, estado);
     });
-    
+
     const data = alumnos.map(a => ({
       id_alumno: a.id,
       nombre: a.nombre,
       apellido: a.apellido,
       estado: asistMap.get(a.id) || null
     }));
-    
+
     return res.json({ alumnos: data });
   } catch (e) {
     console.error('Error en GET /asistencias/dia:', e);
@@ -118,106 +144,214 @@ router.get('/dia', async (req, res) => {
   }
 });
 
+
+// --- POST /pasar-lista ---
 router.post('/pasar-lista', async (req, res) => {
   const { cursoId, materiaId, fecha, items } = req.body || {};
   if (!cursoId || !materiaId || !fecha || !Array.isArray(items)) {
     return res.status(400).json({ message: 'cursoId, materiaId, fecha, items requeridos' });
   }
-  
+
   try {
     // Verificar que el usuario tenga permisos
     if (!req.user) {
       return res.status(401).json({ message: 'No autenticado' });
     }
-    
+
     const operations = [];
-    
+    const createdBy = req.user.id_usuario;
+
     for (const it of items) {
       const { alumnoId, estado } = it;
       if (!alumnoId || !estado) continue;
-      
-      // Verificar que el alumno pertenece al curso
-      const { data: alumno } = await supabase
+
+      // 1. Verificar que el alumno pertenece al curso (Lógica pendiente en tu código original, se ha añadido la consulta)
+      const { data: alumno, error: alumnoError } = await supabase
         .from('alumno')
         .select('id')
         .eq('id', alumnoId)
         .eq('id_curso', cursoId)
         .single();
       
-      if (!alumno) continue;
-      
-      // Determinar presente y justificada según el estado
+      if (alumnoError || !alumno) {
+          // Si el alumno no existe o no pertenece al curso, simplemente lo ignoramos o lanzamos un error.
+          // Aquí optamos por ignorar y continuar. Si deseas fallar, usa 'throw alumnoError'.
+          console.warn(`Alumno ${alumnoId} no encontrado o no pertenece al curso ${cursoId}.`);
+          continue;
+      }
+
+      // 2. Preparar el objeto de asistencia
       const presente = estado === 'Presente';
+      const tarde = estado === 'Tarde';
       const justificada = estado === 'Justificado';
-      
-      // Eliminar asistencia existente si existe
-      await supabase
+
+      const record = {
+        id_alumno: alumnoId,
+        id_materia: materiaId,
+        fecha: fecha,
+        presente: presente,
+        tarde: tarde,
+        justificada: justificada,
+        created_by: createdBy,
+        // Si tienes observaciones, las añadirías aquí: observaciones: it.observaciones,
+      };
+
+      // 3. Buscar asistencia existente para el alumno/materia/fecha
+      const { data: existing, error: fetchError } = await supabase
         .from('asistencias')
-        .delete()
+        .select('id')
         .eq('id_alumno', alumnoId)
         .eq('id_materia', materiaId)
-        .eq('fecha', fecha);
-      
-      // Insertar nueva asistencia
-      const { error: insertError } = await supabase
-        .from('asistencias')
-        .insert({
-          id_alumno: alumnoId,
-          id_materia: materiaId,
-          fecha: fecha,
-          presente: presente,
-          justificada: justificada,
-          created_by: req.user.id_usuario
-        });
-      
-      if (insertError) {
-        console.error('Error insertando asistencia:', insertError);
+        .eq('fecha', fecha)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116: No rows found
+        throw fetchError;
       }
-    }
-    
-    return res.json({ ok: true });
+      
+      // 4. Decidir si actualizar o insertar (Upsert)
+      if (existing) {
+        // Log de la acción de actualización
+        await registrarAccion({
+          idUsuario: createdBy,
+          accion: ACCIONES.ACTUALIZAR_ASISTENCIA,
+          tablaAfectada: TABLAS.ASISTENCIAS,
+          idRegistroAfectado: existing.id,
+          detalles: {
+            estado_anterior: {
+              presente: existing.presente,
+              tarde: existing.tarde,
+              justificada: existing.justificada
+            },
+            estado_nuevo: {
+              presente: presente,
+              tarde: tarde,
+              justificada: justificada
+            },
+            alumno_id: alumnoId,
+            materia_id: materiaId,
+            fecha: fecha
+          }
+        });
+        // Si existe, actualizamos
+        operations.push(
+          supabase
+            .from('asistencias')
+            .update(record)
+            .eq('id', existing.id)
+        );
+      } else {
+        // Insertar nuevo registro
+        const { data: inserted, error: insertError } = await supabase
+          .from('asistencias')
+          .insert(record)
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+        
+        // Log de la acción de creación
+        await registrarAccion({
+          idUsuario: createdBy,
+          accion: ACCIONES.CREAR_ASISTENCIA,
+          tablaAfectada: TABLAS.ASISTENCIAS,
+          idRegistroAfectado: inserted.id,
+          detalles: {
+            estado: {
+              presente: presente,
+              tarde: tarde,
+              justificada: justificada
+            },
+            alumno_id: alumnoId,
+            materia_id: materiaId,
+            fecha: fecha
+          }
+        });
+        operations.push(
+          supabase
+            .from('asistencias')
+            .insert(record)
+        );
+      }
+    } // Fin del for
+
+    // Ejecutar todas las operaciones de forma concurrente
+    await Promise.all(operations);
+
+    return res.json({ ok: true, message: 'Lista pasada con éxito.' });
   } catch (e) {
     console.error('Error en POST /asistencias/pasar-lista:', e);
     return res.status(500).json({ message: 'Error' });
   }
-});
+}); // Fin del router.post
 
+
+// --- PUT /:id ---
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { estado } = req.body || {};
+  const { estado, observaciones } = req.body || {}; // Añadida observaciones si se requiere
   if (!estado) return res.status(400).json({ message: 'estado requerido' });
-  
+
   try {
     if (!req.user) {
       return res.status(401).json({ message: 'No autenticado' });
     }
-    
-    // Obtener asistencia actual
-    const { data: asistencia, error: fetchError } = await supabase
+
+    // Obtener asistencia actual (opcional, solo si necesitas validación o datos adicionales)
+    const { error: fetchError } = await supabase
       .from('asistencias')
-      .select('*')
+      .select('id')
       .eq('id', id)
       .single();
-    
-    if (fetchError || !asistencia) {
+
+    if (fetchError && fetchError.code === 'PGRST116') {
       return res.status(404).json({ message: 'No encontrada' });
+    } else if (fetchError) {
+      throw fetchError;
     }
-    
-    // Actualizar estado
-    const presente = estado === 'Presente';
-    const justificada = estado === 'Justificado';
-    
+
+    // Preparar datos de actualización
+    const updateData = {
+        presente: estado === 'Presente',
+        tarde: estado === 'Tarde', // Asumiendo que 'Tarde' puede ser un estado por sí solo
+        justificada: estado === 'Justificado',
+        // updated_at: new Date().toISOString() // Mejor dejar que la DB o el trigger lo maneje
+    };
+    if (observaciones !== undefined) updateData.observaciones = observaciones;
+
+    // Supabase maneja por defecto que los valores booleanos no especificados son false al actualizar.
+    // Si necesitas garantizar que solo uno es true, usa lógica explícita:
+    // presente: estado === 'Presente',
+    // tarde: estado === 'Tarde',
+    // justificada: estado === 'Justificado',
+
     const { error: updateError } = await supabase
       .from('asistencias')
-      .update({
-        presente: presente,
-        justificada: justificada,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', id);
-    
+
     if (updateError) throw updateError;
-    
+
+    // Log de la acción de actualización
+    await registrarAccion({
+      idUsuario: req.user.id_usuario,
+      accion: ACCIONES.ACTUALIZAR_ASISTENCIA,
+      tablaAfectada: TABLAS.ASISTENCIAS,
+      idRegistroAfectado: id,
+      detalles: {
+        estado_anterior: {
+          presente: updateData.presente,
+          tarde: updateData.tarde,
+          justificada: updateData.justificada
+        },
+        estado_nuevo: {
+          presente: updateData.presente,
+          tarde: updateData.tarde,
+          justificada: updateData.justificada
+        }
+      }
+    });
+
     return res.json({ ok: true });
   } catch (e) {
     console.error('Error en PUT /asistencias/:id:', e);

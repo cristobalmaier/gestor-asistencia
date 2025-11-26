@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import StatusPill from '../components/StatusPill'
+import { CheckCircleIcon } from '@heroicons/react/24/outline'
 
 const ESTADOS = ['Presente','Ausente','Tarde','Justificado']
 
@@ -15,6 +16,9 @@ export default function PasarLista() {
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0,10))
   const [alumnos, setAlumnos] = useState([])
   const [estadoCurso, setEstadoCurso] = useState(null)
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [existingAttendanceId, setExistingAttendanceId] = useState(null)
   const isProfesor = user.rol === 'profesor'
 
   useEffect(() => {
@@ -38,20 +42,116 @@ export default function PasarLista() {
   }, [isProfesor, cursoId, materiaId, fecha])
 
   const cargarLista = async () => {
+    // Si no hay curso seleccionado, cargar todos los alumnos
+    if (!cursoId) {
+      try {
+        const response = await api.get('/alumnos')
+        console.log('Todos los alumnos cargados:', response.data)
+        setAlumnos(response.data || [])
+        setExistingAttendanceId(null)
+        setIsEditing(false)
+        return
+      } catch (error) {
+        console.error('Error al cargar todos los alumnos:', error)
+        setAlumnos([])
+        return
+      }
+    }
+
+    // Si hay un curso seleccionado, cargar según el curso
     if (!puedeBuscar) return
-    const { data } = await api.get('/asistencias/dia', { params: { cursoId, materiaId, fecha } })
-    setAlumnos(data.alumnos)
+    console.log('Cargando lista con:', { cursoId, materiaId, fecha })
+    
+    try {
+      const response = await api.get('/asistencias/dia', { 
+        params: { 
+          cursoId, 
+          materiaId, 
+          fecha 
+        } 
+      })
+      console.log('Respuesta del servidor:', response.data)
+      
+      const data = response.data
+      setAlumnos(data.alumnos || [])
+      
+      // Verificar si hay asistencia existente para esta fecha
+      if (data.existingAttendance) {
+        console.log('Asistencia existente encontrada:', data.existingAttendance)
+        setExistingAttendanceId(data.existingAttendance.id)
+        setIsEditing(true)
+      } else {
+        console.log('No se encontró asistencia existente para esta fecha')
+        setExistingAttendanceId(null)
+        setIsEditing(false)
+      }
+    } catch (error) {
+      console.error('Error al cargar la lista:', error)
+      setAlumnos([])
+      setExistingAttendanceId(null)
+      setIsEditing(false)
+    }
   }
 
   const guardar = async () => {
-    const items = alumnos.filter(a => a.estado).map(a => ({ alumnoId: a.id_alumno, estado: a.estado }))
-    await api.post('/asistencias/pasar-lista', { cursoId, materiaId, fecha, items })
-    await cargarLista()
-    if (!isProfesor) {
-      const { data } = await api.get(`/cursos/${cursoId}/estado`, { params: { fecha } })
-      setEstadoCurso(data)
+    try {
+      const items = alumnos.filter(a => a.estado).map(a => ({
+        alumnoId: a.id_alumno,
+        estado: a.estado,
+        asistenciaId: a.asistencia_id // For updates
+      }))
+      
+      if (isEditing && existingAttendanceId) {
+        await api.put(`/asistencias/${existingAttendanceId}`, { 
+          cursoId, 
+          materiaId, 
+          fecha, 
+          items 
+        })
+      } else {
+        await api.post('/asistencias/pasar-lista', { 
+          cursoId, 
+          materiaId, 
+          fecha, 
+          items 
+        })
+      }
+      
+      await cargarLista()
+      if (!isProfesor) {
+        const { data } = await api.get(`/cursos/${cursoId}/estado`, { params: { fecha } })
+        setEstadoCurso(data)
+      }
+      setShowSuccessModal(true)
+      setTimeout(() => setShowSuccessModal(false), 3000)
+    } catch (error) {
+      console.error('Error al guardar la asistencia:', error)
+      alert('Ocurrió un error al guardar la asistencia')
     }
-    alert('Asistencias registradas')
+  }
+
+  const eliminarAsistencia = async () => {
+    if (!existingAttendanceId) return
+    if (!window.confirm('¿Estás seguro de que deseas eliminar este registro de asistencia?')) return
+    
+    try {
+      await api.delete(`/asistencias/${existingAttendanceId}`)
+      setAlumnos(prev => prev.map(a => ({ ...a, estado: null })))
+      setExistingAttendanceId(null)
+      setIsEditing(false)
+      
+      if (!isProfesor) {
+        const { data } = await api.get(`/cursos/${cursoId}/estado`, { params: { fecha } })
+        setEstadoCurso(data)
+      }
+      
+      // Show success message
+      setShowSuccessModal(true)
+      setTimeout(() => setShowSuccessModal(false), 3000)
+    } catch (error) {
+      console.error('Error al eliminar la asistencia:', error)
+      alert('Ocurrió un error al eliminar la asistencia')
+    }
   }
 
   return (
@@ -113,6 +213,19 @@ export default function PasarLista() {
 
       {alumnos.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+            <h3 className="text-lg font-medium text-gray-900">
+              {isEditing ? 'Editando Asistencia' : 'Vista de Asistencia'}
+            </h3>
+            {!isEditing && (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Editar
+              </button>
+            )}
+          </div>
           <table className="min-w-full">
             <thead className="bg-gray-50 text-gray-600 text-xs font-medium uppercase tracking-wide">
               <tr>
@@ -127,12 +240,19 @@ export default function PasarLista() {
                     <div className="font-medium text-gray-900">{a.apellido}, {a.nombre}</div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <StatusPill value={a.estado} />
-                      <select className="max-w-xs w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors" value={a.estado || ''} onChange={e => setAlumnos(prev => prev.map(x => x.id_alumno === a.id_alumno ? { ...x, estado: e.target.value } : x))}>
-                        <option value="">Seleccionar estado</option>
-                        {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                    <div className="flex items-center">
+                      {isEditing ? (
+                        <select 
+                          className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors" 
+                          value={a.estado || ''} 
+                          onChange={e => setAlumnos(prev => prev.map(x => x.id_alumno === a.id_alumno ? { ...x, estado: e.target.value } : x))}
+                        >
+                          <option value="">Seleccionar estado</option>
+                          {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      ) : (
+                        <StatusPill value={a.estado} />
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -144,8 +264,63 @@ export default function PasarLista() {
 
       {alumnos.length > 0 && (
         <div className="flex justify-end gap-3">
-          <button onClick={guardar} className="inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3 text-base font-medium bg-primary-600 text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors shadow-sm">Guardar asistencias</button>
+          {isEditing && (
+            <>
+              <button 
+                onClick={eliminarAsistencia}
+                className="inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3 text-base font-medium bg-red-600 text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors shadow-sm"
+              >
+                Eliminar Asistencia
+              </button>
+              <button 
+                onClick={() => setIsEditing(false)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3 text-base font-medium bg-yellow-500 text-white hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors shadow-sm"
+              >
+                Cancelar Edición
+              </button>
+            </>
+          )}
+          <button 
+            onClick={guardar} 
+            className={`inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors shadow-sm ${
+              isEditing 
+                ? 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500' 
+                : 'bg-primary-600 hover:bg-primary-700 focus:ring-primary-500'
+            }`}
+          >
+            {isEditing ? 'Actualizar Asistencia' : 'Guardar Asistencia'}
+          </button>
         </div>
+      )}
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
+          <div className="flex flex-col items-center text-center">
+            <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
+              <CheckCircleIcon className="h-6 w-6 text-green-600" aria-hidden="true" />
+            </div>
+            <div className="mt-3">
+              <h3 className="text-lg font-medium text-gray-900">¡Éxito!</h3>
+              <div className="mt-2">
+                <p className="text-sm text-gray-500">
+                  La asistencia se ha guardado correctamente.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="mt-5">
+            <button
+              type="button"
+              className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:text-sm"
+              onClick={() => setShowSuccessModal(false)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
       )}
     </div>
   )

@@ -13,6 +13,7 @@ router.post('/signup', async (req, res) => {
     return res.status(400).json({ message: 'Todos los campos son requeridos' });
   }
   
+  // cambiar nombre y apellido por los que estan en la base de datos
   const { data: teacher, error: teacherError } = await supabase
     .from('teachers')
     .insert({ email, nombre, apellido })

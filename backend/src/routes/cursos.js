@@ -30,12 +30,39 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/alumnos', async (req, res) => {
+  try {
+    const { data: alumnos, error } = await supabase
+      .from('alumno')
+      .select('id, nombre, apellido, dni, email, id_curso, curso:curso_id(curso)')
+      .order('apellido')
+      .order('nombre');
+
+    if (error) throw error;
+
+    const transformed = alumnos.map(a => ({
+      id_alumno: a.id,
+      nombre: a.nombre,
+      apellido: a.apellido,
+      dni: a.dni,
+      email: a.email,
+      id_curso: a.id_curso,
+      curso_nombre: a.curso?.curso || 'Sin curso'
+    }));
+
+    return res.json(transformed);
+  } catch (e) {
+    console.error('Error en GET /alumnos:', e);
+    return res.status(500).json({ message: 'Error retrieving all students' });
+  }
+});
+
 router.get('/:id/alumnos', async (req, res) => {
   const { id } = req.params;
   try {
     const { data: alumnos, error } = await supabase
       .from('alumno')
-      .select('id, nombre, apellido, dni, email')
+      .select('id, nombre, apellido, dni, email, id_curso, curso:curso_id(curso)')
       .eq('id_curso', id)
       .order('apellido')
       .order('nombre');
@@ -47,13 +74,15 @@ router.get('/:id/alumnos', async (req, res) => {
       nombre: a.nombre,
       apellido: a.apellido,
       dni: a.dni,
-      email: a.email
+      email: a.email,
+      id_curso: a.id_curso,
+      curso_nombre: a.curso?.curso || 'Sin curso'
     }));
 
     return res.json(transformed);
   } catch (e) {
     console.error('Error en GET /cursos/:id/alumnos:', e);
-    return res.status(500).json({ message: 'Error' });
+    return res.status(500).json({ message: 'Error retrieving students' });
   }
 });
 

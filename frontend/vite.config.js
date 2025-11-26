@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       'process.env': env,
     },
     server: {
-      port: 5173,
+      port: 3000,
       host: true,
       open: true,
       strictPort: false,

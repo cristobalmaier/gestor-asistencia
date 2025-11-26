@@ -74,30 +74,56 @@ router.get('/', authorize(['admin']), async (req, res) => {
 router.post('/', authorize(['admin']), async (req, res) => {
   const { nombre, apellido, email, rol, password, dni } = req.body || {};
 
+  console.log("BODY RECIBIDO EN POST /usuarios:", req.body);
+
   if (!nombre || !apellido || !email || !rol || !password) {
     return res.status(400).json({ message: 'Todos los campos son requeridos' });
   }
 
+  // Validación robusta de contraseña
+  if (typeof password !== 'string' || password.length < 6) {
+    return res.status(400).json({ message: 'La contraseña debe tener al menos 6 caracteres' });
+  }
+
   try {
-    // Hashear la contraseña
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // 1. Crear usuario en Supabase Auth
+    console.log('Intentando crear usuario en Supabase Auth con email:', email);
+    console.log('URL de Supabase:', process.env.SUPABASE_URL);
 
-    // Generar un UUID para user_id (simulando lo que haría Supabase Auth)
-    const { data: uuidData } = await supabase.rpc('gen_random_uuid');
-    const generatedUserId = uuidData || crypto.randomUUID();
+    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        name: `${nombre} ${apellido}`,
+        role: rol
+      }
+    });
 
-    // Crear usuario en la tabla teachers directamente
+    if (authError) {
+      console.error('Error detallado al crear usuario en Supabase Auth:', {
+        message: authError.message,
+        status: authError.status,
+        code: authError.code,
+        details: authError.error_description || 'Sin detalles adicionales'
+      });
+      throw new Error(`Error al crear el usuario en el sistema de autenticación: ${authError.message}`);
+    }
+
+    console.log('Usuario creado exitosamente en Supabase Auth:', authUser.user.id);
+    const userId = authUser.user.id;
+
+    // 2. Crear usuario en la tabla teachers
     const { data: teacher, error: teacherError } = await supabase
       .from('teachers')
       .insert({
-        user_id: generatedUserId,
+        user_id: userId,
         first_name: nombre,
         last_name: apellido,
-        email: email,
+        email,
         dni: dni || email,
         employment_status: 'titular',
-        is_active: true,
-        contraseña: hashedPassword
+        is_active: true
       })
       .select()
       .single();
@@ -109,18 +135,21 @@ router.post('/', authorize(['admin']), async (req, res) => {
 
     console.log('Teacher creado:', teacher.id, 'con user_id:', teacher.user_id);
 
-    // Crear entrada en usuarios_roles con el rol
+    // 3. Crear o actualizar entrada en usuarios_roles
     const { error: roleError } = await supabase
       .from('usuarios_roles')
-      .insert({
-        user_id: teacher.user_id,
-        rol: rol
-      });
+      .upsert(
+        {
+          user_id: userId,
+          rol: rol
+        },
+        { onConflict: 'user_id' }
+      );
 
     if (roleError) {
-      console.error('Error al crear rol:', roleError);
+      console.error('Error al actualizar rol:', roleError);
     } else {
-      console.log('Rol asignado:', rol, 'para user_id:', teacher.user_id);
+      console.log('Rol asignado/actualizado:', rol, 'para user_id:', userId);
     }
 
     return res.json({
@@ -146,7 +175,6 @@ router.put('/:id', authorize(['admin']), async (req, res) => {
   const { nombre, apellido, email, rol, password, dni } = req.body || {};
 
   try {
-    // Buscar teacher
     const { data: teacher } = await supabase
       .from('teachers')
       .select('*')
@@ -159,9 +187,7 @@ router.put('/:id', authorize(['admin']), async (req, res) => {
       if (apellido) updateData.last_name = apellido;
       if (email) updateData.email = email;
       if (dni) updateData.dni = dni;
-      if (password) {
-        updateData.contraseña = await bcrypt.hash(password, 10);
-      }
+      if (password) updateData.contraseña = await bcrypt.hash(password, 10);
 
       const { data: updated, error } = await supabase
         .from('teachers')
@@ -172,16 +198,13 @@ router.put('/:id', authorize(['admin']), async (req, res) => {
 
       if (error) throw error;
 
-      // Actualizar rol si se proporciona
       if (rol && teacher.user_id) {
         await supabase
           .from('usuarios_roles')
-          .upsert({
-            user_id: teacher.user_id,
-            rol: rol
-          }, {
-            onConflict: 'user_id'
-          });
+          .upsert(
+            { user_id: teacher.user_id, rol: rol },
+            { onConflict: 'user_id' }
+          );
       }
 
       return res.json({
@@ -206,7 +229,6 @@ router.delete('/:id', authorize(['admin']), async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Buscar teacher
     const { data: teacher } = await supabase
       .from('teachers')
       .select('id')
@@ -214,7 +236,6 @@ router.delete('/:id', authorize(['admin']), async (req, res) => {
       .single();
 
     if (teacher) {
-      // Eliminar rol primero (si tiene user_id)
       if (teacher.user_id) {
         await supabase
           .from('usuarios_roles')
@@ -222,7 +243,6 @@ router.delete('/:id', authorize(['admin']), async (req, res) => {
           .eq('user_id', teacher.user_id);
       }
 
-      // Eliminar teacher
       const { error } = await supabase
         .from('teachers')
         .delete()

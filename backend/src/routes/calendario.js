@@ -44,13 +44,20 @@ router.get('/', async (req, res) => {
     if (error) throw error;
 
     // Transformar al formato esperado
-    const transformed = eventos.map(e => ({
-      id_evento: e.id,
-      fecha: e.fecha_inicio.split('T')[0], // Extraer solo la fecha
-      descripcion: e.titulo + (e.descripcion ? ` - ${e.descripcion}` : ''),
-      id_curso: e.id_curso,
-      curso_nombre: e.curso?.curso || null
-    }));
+    const transformed = eventos.map(e => {
+      let desc = e.titulo;
+      if (e.descripcion && e.descripcion !== e.titulo) {
+        desc += ` - ${e.descripcion}`;
+      }
+
+      return {
+        id_evento: e.id,
+        fecha: e.fecha_inicio.split('T')[0], // Extraer solo la fecha
+        descripcion: desc,
+        id_curso: e.id_curso,
+        curso_nombre: e.curso?.curso || null
+      };
+    });
 
     return res.json(transformed);
   } catch (e) {

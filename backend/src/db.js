@@ -10,16 +10,26 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error('SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY son requeridos en las variables de entorno');
 }
 
+// Configuración global para Supabase
+const options = {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false
+  },
+  global: {
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_SERVICE_ROLE_KEY
+    }
+  }
+};
+
 // Cliente con service role key para operaciones del backend (bypass RLS)
 export const supabase = createClient(
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
+  options
 );
 
 // Cliente anónimo para operaciones que respetan RLS
