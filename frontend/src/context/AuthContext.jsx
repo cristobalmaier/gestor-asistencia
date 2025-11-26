@@ -35,6 +35,17 @@ export function AuthProvider({ children }) {
     setIsAuthenticated(false);
   };
 
+  const signUp = async (email, password, data) => {
+    const { nombre, apellido } = data;
+    try {
+      const response = await api.post('/auth/signup', { email, password, nombre, apellido });
+      return response.data;
+    } catch (error) {
+      console.error('Error en signUp:', error);
+      throw error;
+    }
+  };
+
   // Verificar si el usuario tiene un rol específico
   const hasRole = (role) => {
     if (!user) return false;
@@ -87,6 +98,7 @@ export function AuthProvider({ children }) {
     hasAnyRole,
     isAdmin,
     isAuthenticated,
+    signUp,
   };
 
   return (

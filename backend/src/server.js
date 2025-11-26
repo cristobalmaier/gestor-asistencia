@@ -26,5 +26,5 @@ app.use('/api/historial', authenticate, historialRouter);
 app.use('/api/profesor', authenticate, profesorRouter);
 app.use('/api/usuarios', authenticate, usuariosRouter);
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`API escuchando en puerto ${PORT}`));

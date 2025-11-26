@@ -9,9 +9,11 @@ import Historial from './pages/Historial.jsx'
 import GestionUsuarios from './pages/Usuarios.jsx'
 import { ProtectedRoute } from './components/ProtectedRoute.jsx'
 import Layout from './components/Layout.jsx'
+import { AuthProvider } from './context/AuthContext.jsx'
 
 export default function App() {
   return (
+    <AuthProvider>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/registro" element={<Register />} />
@@ -61,5 +63,6 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </AuthProvider>
   )
 }

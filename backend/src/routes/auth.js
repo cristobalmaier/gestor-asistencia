@@ -6,6 +6,22 @@ import { authenticate } from '../middleware/auth.js';
 
 const router = Router();
 
+router.post('/signup', async (req, res) => {
+  const { email, password, nombre, apellido } = req.body || {};
+  
+  if (!email || !password || !nombre || !apellido) {
+    return res.status(400).json({ message: 'Todos los campos son requeridos' });
+  }
+  
+  const { data: teacher, error: teacherError } = await supabase
+    .from('teachers')
+    .insert({ email, nombre, apellido })
+    .select()
+    .single();
+
+  return res.json(teacher);
+});
+
 router.post('/login', async (req, res) => {
   console.log('Solicitud de inicio de sesión recibida:', req.body);
   const { email, password } = req.body || {};
@@ -25,6 +41,8 @@ router.post('/login', async (req, res) => {
       .eq('email', email)
       .single();
 
+
+    console.log(teacher)
     if (teacherError || !teacher) {
       console.error('Usuario no encontrado en teachers:', email, teacherError);
       return res.status(401).json({ message: 'Credenciales inválidas' });
