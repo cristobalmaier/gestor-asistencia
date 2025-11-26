@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
+import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { Dialog, Transition } from '@headlessui/react'
+import { Fragment } from 'react'
+
 
 
 export default function Calendario() {
@@ -11,6 +15,10 @@ export default function Calendario() {
   const [eventos, setEventos] = useState([])
   const [desc, setDesc] = useState('')
   const [resumen, setResumen] = useState(null)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [editingEvent, setEditingEvent] = useState(null)
+  const [deletingEventId, setDeletingEventId] = useState(null)
 
   useEffect(() => { api.get('/cursos').then(({ data }) => setCursos(data)) }, [])
 
@@ -47,6 +55,41 @@ export default function Calendario() {
       setDesc('')
       await cargar()
     } catch (e) { alert('No se pudo crear el evento (requiere preceptor o admin)') }
+  }
+
+  const actualizarEvento = async () => {
+    if (!editingEvent || !editingEvent.descripcion) return
+    try {
+      await api.put(`/calendario/${editingEvent.id_evento}`, {
+        descripcion: editingEvent.descripcion,
+        cursoId: cursoId || null
+      })
+      setIsEditModalOpen(false)
+      await cargar()
+    } catch (e) {
+      console.error('Error al actualizar el evento:', e)
+      alert('No se pudo actualizar el evento')
+    }
+  }
+
+  const eliminarEvento = async (eventoId) => {
+    setDeletingEventId(eventoId);
+    setIsDeleteModalOpen(true);
+  }
+
+  const confirmarEliminacion = async () => {
+    if (!deletingEventId) return;
+    
+    try {
+      await api.delete(`/calendario/${deletingEventId}`);
+      await cargar();
+      setIsDeleteModalOpen(false);
+    } catch (e) {
+      console.error('Error al eliminar el evento:', e);
+      alert('No se pudo eliminar el evento');
+    } finally {
+      setDeletingEventId(null);
+    }
   }
 
   return (
@@ -118,6 +161,9 @@ export default function Calendario() {
               <th className="text-left px-6 py-4">Fecha</th>
               <th className="text-left px-6 py-4">Curso</th>
               <th className="text-left px-6 py-4">Descripción</th>
+              {['preceptor', 'admin'].includes(user.rol) && (
+                <th className="text-right px-6 py-4">Acciones</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -127,9 +173,28 @@ export default function Calendario() {
                   <span className="font-medium text-gray-900">{new Date(ev.fecha).toLocaleDateString('es-ES')}</span>
                 </td>
                 <td className="px-6 py-4">
-                  <span className="text-gray-600">{ev.id_curso || 'Todos'}</span>
+                  <span className="text-gray-600">{ev.curso_nombre || 'Todos'}</span>
                 </td>
                 <td className="px-6 py-4 text-gray-900">{ev.descripcion}</td>
+                {['preceptor', 'admin'].includes(user.rol) && (
+                  <td className="px-6 py-4 text-right text-sm font-medium">
+                    <button
+                      onClick={() => {
+                        setEditingEvent(ev);
+                        setIsEditModalOpen(true);
+                      }}
+                      className="text-blue-600 hover:text-blue-900 mr-4"
+                    >
+                      <PencilIcon className="h-5 w-5 inline" />
+                    </button>
+                    <button
+                      onClick={() => eliminarEvento(ev.id_evento)}
+                      className="text-red-600 hover:text-red-900"
+                    >
+                      <TrashIcon className="h-5 w-5 inline" />
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
             {eventos.length === 0 && (
@@ -138,6 +203,137 @@ export default function Calendario() {
           </tbody>
         </table>
       </div>
+
+      {/* Modal de edición */}
+      <Transition appear show={isEditModalOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-10" onClose={() => setIsEditModalOpen(false)}>
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-black bg-opacity-25" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                  <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-gray-900">
+                    Editar Evento
+                  </Dialog.Title>
+                  <div className="mt-4">
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Descripción
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        value={editingEvent?.descripcion || ''}
+                        onChange={(e) =>
+                          setEditingEvent({
+                            ...editingEvent,
+                            descripcion: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      onClick={() => setIsEditModalOpen(false)}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      onClick={actualizarEvento}
+                    >
+                      Guardar Cambios
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
+
+      {/* Modal de confirmación de eliminación */}
+      <Transition appear show={isDeleteModalOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-10" onClose={() => setIsDeleteModalOpen(false)}>
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-black bg-opacity-25" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                  <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-gray-900">
+                    Confirmar eliminación
+                  </Dialog.Title>
+                  <div className="mt-4">
+                    <p className="text-sm text-gray-500">
+                      ¿Estás seguro de que deseas eliminar este evento? Esta acción no se puede deshacer.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      onClick={() => setIsDeleteModalOpen(false)}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      onClick={confirmarEliminacion}
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
     </div>
   )
 }

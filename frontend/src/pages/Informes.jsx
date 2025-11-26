@@ -92,8 +92,8 @@ export default function Informes() {
     try {
       setLoading(true)
       if (tab === 'curso') {
-        if (!cursoId) {
-          toast.error('Seleccione un curso para continuar')
+        if (!cursoId && cursoId !== 'todos') {
+          toast.error('Seleccione un curso o "Todos los cursos" para continuar')
           return
         }
         const { data } = await api.get('/reportes/curso', { 
@@ -244,6 +244,7 @@ export default function Informes() {
               <label className="block text-sm font-medium text-gray-900 mb-1.5">Curso</label>
               <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors" value={cursoId} onChange={e => setCursoId(e.target.value)}>
                 <option value="">Seleccionar</option>
+              <option value="todos">Todos los cursos</option>
                 {cursos.map(c => (<option key={c.id_curso} value={c.id_curso}>{c.nombre} {c.anio}°{c.division}</option>))}
               </select>
             </div>

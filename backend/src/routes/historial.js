@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
       `);
     
     // Aplicar filtros
-    if (desde) query = query.gte('fecha_hora', desde);ñ
+    if (desde) query = query.gte('fecha_hora', desde);
     if (hasta) query = query.lte('fecha_hora', hasta + 'T23:59:59'); // Incluir todo el día
     if (id_usuario) query = query.eq('id_usuario', id_usuario);
     

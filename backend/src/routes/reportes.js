@@ -16,10 +16,16 @@ router.get('/curso', async (req, res) => {
     // Obtener materias del curso
     let materiaQuery = supabase
       .from('materias')
-      .select('id')
-      .eq('curso_id', cursoId);
+      .select('id, curso_id, nombre')
+      .order('curso_id', { ascending: true });
     
-    if (materiaId) {
+    // Si no es 'todos', filtrar por el curso específico
+    if (cursoId && cursoId !== 'todos') {
+      materiaQuery = materiaQuery.eq('curso_id', cursoId);
+    }
+    
+    // Si hay un filtro de materia, aplicarlo
+    if (materiaId && materiaId !== 'todos') {
       materiaQuery = materiaQuery.eq('id', materiaId);
     }
     
@@ -50,13 +56,29 @@ router.get('/curso', async (req, res) => {
     // Agrupar por alumno
     const alumnosMap = new Map();
     
+    // Obtener información de los alumnos para mostrar el curso cuando se seleccionan todos
+    const { data: alumnosData } = await supabase
+      .from('alumnos')
+      .select('id, nombre, apellido, curso:curso_id(nombre, anio, division)');
+    
+    const alumnosInfo = alumnosData?.reduce((acc, alumno) => {
+      acc[alumno.id] = {
+        ...alumno,
+        cursoNombre: alumno.curso ? `${alumno.curso.nombre} ${alumno.curso.anio}°${alumno.curso.division}` : 'Sin curso'
+      };
+      return acc;
+    }, {}) || {};
+    
     asistencias.forEach(a => {
       const alumnoId = a.id_alumno;
+      const alumnoInfo = alumnosInfo[alumnoId] || {};
+      
       if (!alumnosMap.has(alumnoId)) {
         alumnosMap.set(alumnoId, {
           id_alumno: alumnoId,
-          nombre: a.alumno?.nombre || '',
-          apellido: a.alumno?.apellido || '',
+          nombre: alumnoInfo.nombre || '',
+          apellido: alumnoInfo.apellido || '',
+          curso: cursoId === 'todos' ? alumnoInfo.cursoNombre : undefined,
           presentes: 0,
           ausentes: 0,
           tardes: 0,
@@ -77,11 +99,23 @@ router.get('/curso', async (req, res) => {
       }
     });
     
-    const rows = Array.from(alumnosMap.values())
-      .sort((a, b) => a.apellido.localeCompare(b.apellido) || a.nombre.localeCompare(b.nombre));
+    let rows = Array.from(alumnosMap.values())
+      .sort((a, b) => {
+        // Si estamos mostrando todos los cursos, ordenar primero por curso y luego por apellido
+        if (cursoId === 'todos') {
+          return (a.curso || '').localeCompare(b.curso || '') || 
+                 a.apellido.localeCompare(b.apellido) || 
+                 a.nombre.localeCompare(b.nombre);
+        }
+        return a.apellido.localeCompare(b.apellido) || a.nombre.localeCompare(b.nombre);
+      });
     
     if (formatType === 'csv') {
-      const parser = new Parser({ fields: ['id_alumno','apellido','nombre','presentes','ausentes','tardes','justificados','total'] });
+      const fields = ['id_alumno', 'apellido', 'nombre'];
+      if (cursoId === 'todos') fields.push('curso');
+      fields.push('presentes', 'ausentes', 'tardes', 'justificados', 'total');
+      
+      const parser = new Parser({ fields });
       const csv = parser.parse(rows);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="reporte_curso.csv"');
@@ -90,16 +124,29 @@ router.get('/curso', async (req, res) => {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Reporte');
       
-      worksheet.columns = [
+      const columns = [
         { header: 'Apellido', key: 'apellido', width: 20 },
-        { header: 'Nombre', key: 'nombre', width: 20 },
+        { header: 'Nombre', key: 'nombre', width: 20 }
+      ];
+      
+      // Agregar columna de curso solo si se seleccionaron todos los cursos
+      if (cursoId === 'todos') {
+        columns.push({ header: 'Curso', key: 'curso', width: 25 });
+      }
+      
+      // Agregar el resto de las columnas
+      columns.push(
         { header: 'Presentes', key: 'presentes', width: 10 },
         { header: 'Ausentes', key: 'ausentes', width: 10 },
         { header: 'Tardes', key: 'tardes', width: 10 },
         { header: 'Justificados', key: 'justificados', width: 12 },
         { header: 'Total', key: 'total', width: 10 }
-      ];
+      );
       
+      // Set the columns first
+      worksheet.columns = columns;
+      
+      // Then add the rows
       worksheet.addRows(rows);
       worksheet.getRow(1).font = { bold: true };
       
@@ -120,22 +167,35 @@ router.get('/curso', async (req, res) => {
       const printer = new PdfPrinter(fonts);
       const docDefinition = {
         content: [
-          { text: 'Reporte de Asistencia por Curso', style: 'header' },
+          { text: 'Reporte de Asistencia' + (cursoId === 'todos' ? ' - Todos los Cursos' : ''), style: 'header' },
           {
             table: {
               headerRows: 1,
-              widths: ['*', '*', 'auto', 'auto', 'auto', 'auto', 'auto'],
+              widths: cursoId === 'todos' ? 
+                ['*', '*', '*', 'auto', 'auto', 'auto', 'auto', 'auto'] :
+                ['*', '*', 'auto', 'auto', 'auto', 'auto', 'auto'],
               body: [
-                ['Apellido', 'Nombre', 'Presentes', 'Ausentes', 'Tardes', 'Justificados', 'Total'],
-                ...rows.map(row => [
-                  row.apellido,
-                  row.nombre,
-                  row.presentes,
-                  row.ausentes,
-                  row.tardes,
-                  row.justificados,
-                  row.total
-                ])
+                cursoId === 'todos' ?
+                  ['Curso', 'Apellido', 'Nombre', 'Presentes', 'Ausentes', 'Tardes', 'Justificados', 'Total'] :
+                  ['Apellido', 'Nombre', 'Presentes', 'Ausentes', 'Tardes', 'Justificados', 'Total'],
+                ...rows.map(row => {
+                  const baseRow = [
+                    row.apellido,
+                    row.nombre,
+                    row.presentes.toString(),
+                    row.ausentes.toString(),
+                    row.tardes.toString(),
+                    row.justificados.toString(),
+                    row.total.toString()
+                  ];
+                  
+                  // Insertar el curso al principio si es necesario
+                  if (cursoId === 'todos') {
+                    baseRow.unshift(row.curso || 'Sin curso');
+                  }
+                  
+                  return baseRow;
+                })
               ]
             }
           }

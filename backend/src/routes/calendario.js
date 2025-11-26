@@ -98,4 +98,41 @@ router.post('/', authorize(['admin', 'preceptor']), async (req, res) => {
   }
 });
 
+router.delete('/:id', authorize(['admin', 'preceptor']), async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    // Primero verificamos si el evento existe
+    const { data: evento, error: fetchError } = await supabase
+      .from('eventos')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) throw fetchError;
+    if (!evento) {
+      return res.status(404).json({ message: 'Evento no encontrado' });
+    }
+
+    // Verificar que el usuario tiene permiso para eliminar el evento
+    // (solo el creador o un administrador pueden eliminar)
+    if (evento.created_by !== req.user.id_usuario && req.user.rol !== 'admin') {
+      return res.status(403).json({ message: 'No tienes permiso para eliminar este evento' });
+    }
+
+    // Eliminar el evento
+    const { error: deleteError } = await supabase
+      .from('eventos')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) throw deleteError;
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('Error en DELETE /calendario/:id:', e);
+    return res.status(500).json({ message: 'Error al eliminar el evento' });
+  }
+});
+
 export default router;
