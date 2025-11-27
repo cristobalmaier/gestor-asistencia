@@ -27,7 +27,6 @@ const itemsByRole = (userRole) => {
         label: 'Administración'
       },
       { to: '/admin/usuarios', label: 'Gestión de Usuarios', icon: Users },
-      { to: '/admin/configuracion', label: 'Configuración', icon: Settings }
     ]
   }
 

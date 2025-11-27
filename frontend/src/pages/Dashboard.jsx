@@ -14,6 +14,7 @@ import {
   UserCog,
   Users
 } from 'lucide-react'
+import api, { getDashboardStats } from '../services/api'
 
 const iconMap = {
   'Pasar lista': ClipboardCheck,
@@ -35,12 +36,7 @@ export default function Dashboard() {
   const { user } = useAuth()
 
   // Estado para las estadísticas
-  const [stats, setStats] = useState({
-    totalAsistencias: 0,
-    totalInasistencias: 0,
-    totalJustificadas: 0,
-    ultimaActualizacion: null
-  })
+  const [stats, setStats] = useState(null)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -58,7 +54,7 @@ export default function Dashboard() {
 
   // Definir las tarjetas basadas en el rol del usuario
   const cards = []
-  const userRole = user?.userRole || ''
+  const userRole = user?.rol || ''
 
   // Agregar tarjetas según el rol
   if (['admin', 'preceptor', 'profesor'].includes(userRole)) {
@@ -106,38 +102,19 @@ export default function Dashboard() {
       try {
         setLoading(true)
         setError(null)
-
         if (['admin', 'preceptor', 'directivo'].includes(userRole)) {
-          // Obtener estadísticas de asistencias desde Supabase
-          const { data, error } = await supabase
-            .from('asistencias')
-            .select('estado, fecha')
-            .order('fecha', { ascending: false })
-            .limit(100) // Limitar a 100 registros para el cálculo
-
-          if (error) throw error
-
-          // Calcular estadísticas
-          const totalAsistencias = data.filter(a => a.estado === 'presente').length
-          const totalInasistencias = data.filter(a => a.estado === 'ausente').length
-          const totalJustificadas = data.filter(a => a.estado === 'justificada').length
-          const ultimaActualizacion = data[0]?.fecha || new Date().toISOString()
-
-          setStats({
-            totalAsistencias,
-            totalInasistencias,
-            totalJustificadas,
-            ultimaActualizacion
-          })
+          const data = await getDashboardStats()
+          setStats(data)
+        } else {
+          setStats(null)
         }
       } catch (err) {
-        console.error('Error al cargar estadísticas:', err)
         setError('Error al cargar las estadísticas')
+        setStats(null)
       } finally {
         setLoading(false)
       }
     }
-
     fetchStats()
   }, [userRole])
 
@@ -172,7 +149,7 @@ export default function Dashboard() {
                   <p className="text-sm text-red-600 mt-2">Error</p>
                 ) : (
                   <p className="text-3xl font-bold text-green-600">
-                    {stats?.attendanceStats?.porcentaje_asistencia || 0}%
+                    {stats?.attendanceStats?.porcentaje_asistencia ?? 0}%
                   </p>
                 )}
               </div>
@@ -186,7 +163,6 @@ export default function Dashboard() {
               </p>
             )}
           </div>
-
           {/* Total Students with Absences */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <div className="flex items-center justify-between">
@@ -208,7 +184,6 @@ export default function Dashboard() {
             </div>
             <p className="text-xs text-gray-500 mt-2">Últimos 30 días</p>
           </div>
-
           {/* Upcoming Events */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <div className="flex items-center justify-between">
@@ -230,7 +205,6 @@ export default function Dashboard() {
             </div>
             <p className="text-xs text-gray-500 mt-2">Próximos 30 días</p>
           </div>
-
           {/* Total Records */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <div className="flex items-center justify-between">
@@ -290,7 +264,7 @@ export default function Dashboard() {
                       </div>
                       <div>
                         <p className="font-medium text-gray-900">{student.nombre} {student.apellido}</p>
-                        <p className="text-sm text-gray-600">{student.curso_nombre} - {student.anio}°{student.division}</p>
+                        <p className="text-sm text-gray-600">{student.curso_nombre}</p>
                       </div>
                     </div>
                     <div className="text-right">
@@ -302,7 +276,6 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-
           {/* Upcoming Events */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Próximos Eventos</h3>
