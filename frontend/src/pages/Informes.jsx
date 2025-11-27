@@ -91,9 +91,14 @@ export default function Informes() {
 
     try {
       setLoading(true)
+      // Leer el estado actual de alumnoId al inicio
+      const alumnoIdActual = alumnoId
+      console.log('Estado actual al inicio de cargar - alumnoId:', alumnoIdActual)
+      
       if (tab === 'curso') {
         if (!cursoId && cursoId !== 'todos') {
           toast.error('Seleccione un curso o "Todos los cursos" para continuar')
+          setLoading(false)
           return
         }
         const { data } = await api.get('/reportes/curso', { 
@@ -107,18 +112,118 @@ export default function Informes() {
         })
         setRows(data)
       } else {
-        if (['padre','directivo','preceptor','profesor'].includes(user.rol) && !alumnoId) {
+        // Usar el valor leído al inicio de la función para evitar problemas de timing
+        let alumnoIdFinal = alumnoIdActual || alumnoId
+        console.log('Inicio cargar - alumnoIdActual:', alumnoIdActual, 'alumnoId (estado):', alumnoId, 'alumnoIdFinal:', alumnoIdFinal)
+        
+        // Si no hay alumnoId pero hay texto de búsqueda, intentar encontrar el alumno
+        if (['padre','directivo','preceptor','profesor'].includes(user.rol) && !alumnoIdFinal && busquedaAlumno.trim()) {
+          // Primero, si hay alumnos ya cargados en el estado (del dropdown), usar esos
+          if (alumnos && alumnos.length > 0) {
+            // Si hay exactamente un resultado en el estado, usarlo
+            if (alumnos.length === 1) {
+              alumnoIdFinal = alumnos[0].id_usuario
+              setAlumnoId(alumnoIdFinal)
+              setBusquedaAlumno(`${alumnos[0].apellido}, ${alumnos[0].nombre}`)
+              setAlumnos([])
+            } else {
+              // Si hay múltiples resultados, intentar hacer match exacto con el texto ingresado
+              const textoBusqueda = busquedaAlumno.trim().toLowerCase()
+              const matchExacto = alumnos.find(a => {
+                const nombreCompleto = `${a.apellido}, ${a.nombre}`.toLowerCase()
+                return nombreCompleto === textoBusqueda
+              })
+              
+              if (matchExacto) {
+                alumnoIdFinal = matchExacto.id_usuario
+                setAlumnoId(alumnoIdFinal)
+                setBusquedaAlumno(`${matchExacto.apellido}, ${matchExacto.nombre}`)
+                setAlumnos([])
+              } else {
+                // Si no hay match exacto, pedir que seleccione uno
+                toast.error('Hay múltiples alumnos con ese nombre. Por favor, seleccione uno de la lista.')
+                setLoading(false)
+                return
+              }
+            }
+          } else {
+            // Si no hay alumnos en el estado, hacer una búsqueda nueva
+            try {
+              const { data: alumnosEncontrados } = await api.get('/usuarios/alumnos/search', { 
+                params: { busqueda: busquedaAlumno.trim() } 
+              })
+              
+              if (alumnosEncontrados && alumnosEncontrados.length > 0) {
+                // Si hay exactamente un resultado, usarlo automáticamente
+                if (alumnosEncontrados.length === 1) {
+                  alumnoIdFinal = alumnosEncontrados[0].id_usuario
+                  setAlumnoId(alumnoIdFinal)
+                  setBusquedaAlumno(`${alumnosEncontrados[0].apellido}, ${alumnosEncontrados[0].nombre}`)
+                } else {
+                  // Si hay múltiples resultados, intentar hacer match exacto con el texto ingresado
+                  const textoBusqueda = busquedaAlumno.trim().toLowerCase()
+                  const matchExacto = alumnosEncontrados.find(a => {
+                    const nombreCompleto = `${a.apellido}, ${a.nombre}`.toLowerCase()
+                    return nombreCompleto === textoBusqueda
+                  })
+                  
+                  if (matchExacto) {
+                    alumnoIdFinal = matchExacto.id_usuario
+                    setAlumnoId(alumnoIdFinal)
+                    setBusquedaAlumno(`${matchExacto.apellido}, ${matchExacto.nombre}`)
+                  } else {
+                    // Si no hay match exacto, pedir que seleccione uno
+                    toast.error('Hay múltiples alumnos con ese nombre. Por favor, seleccione uno de la lista.')
+                    setLoading(false)
+                    return
+                  }
+                }
+              } else {
+                toast.error('No se encontró ningún alumno con ese nombre')
+                setLoading(false)
+                return
+              }
+            } catch (error) {
+              console.error('Error al buscar alumno:', error)
+              toast.error('Error al buscar el alumno. Por favor, seleccione uno de la lista.')
+              setLoading(false)
+              return
+            }
+          }
+        }
+        
+        if (['padre','directivo','preceptor','profesor'].includes(user.rol) && !alumnoIdFinal) {
           toast.error('Seleccione un alumno para continuar')
+          setLoading(false)
           return
         }
+        
+        console.log('Antes de construir params - alumnoIdFinal:', alumnoIdFinal, 'tipo:', typeof alumnoIdFinal, 'valor truthy:', !!alumnoIdFinal)
         const params = { desde: desde || undefined, hasta: hasta || undefined, materiaId: materiaId || undefined }
-        if (['padre','directivo','preceptor','profesor'].includes(user.rol) && alumnoId) params.alumnoId = alumnoId
+        
+        // Agregar alumnoId si existe y el usuario no es alumno (los alumnos usan su propio ID del token)
+        if (user.rol !== 'alumno') {
+          if (alumnoIdFinal) {
+            params.alumnoId = alumnoIdFinal
+            console.log('Agregando alumnoId a params:', alumnoIdFinal)
+          } else {
+            console.log('NO se agrega alumnoId porque alumnoIdFinal es falsy:', alumnoIdFinal)
+          }
+        }
+        
+        console.log('Buscando informe con params finales:', params)
         const { data } = await api.get('/reportes/alumno', { params })
-        setRows(data)
+        console.log('Datos recibidos:', data)
+        setRows(data || [])
       }
     } catch (error) {
-      toast.error('Error al cargar los datos')
       console.error('Error al cargar los datos:', error)
+      if (error.response) {
+        console.error('Error response:', error.response.data)
+        toast.error(error.response.data?.message || 'Error al cargar los datos')
+      } else {
+        toast.error('Error al cargar los datos')
+      }
     } finally {
       setLoading(false)
     }
@@ -373,9 +478,11 @@ export default function Informes() {
                         type="button"
                         className="w-full text-left px-4 py-2 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
                         onClick={() => {
+                          console.log('Alumno seleccionado:', alumno)
                           setAlumnoId(alumno.id_usuario)
                           setBusquedaAlumno(`${alumno.apellido}, ${alumno.nombre}`)
                           setAlumnos([])
+                          console.log('AlumnoId establecido:', alumno.id_usuario)
                         }}
                       >
                         <div className="font-medium text-gray-900">{alumno.apellido}, {alumno.nombre}</div>
@@ -475,6 +582,7 @@ export default function Informes() {
                   <th className="text-left px-6 py-4">Fecha</th>
                   <th className="text-left px-6 py-4">Materia</th>
                   <th className="text-left px-6 py-4">Estado</th>
+                  <th className="text-left px-6 py-4">Curso</th>
                 </>
               )}
             </tr>
@@ -500,12 +608,13 @@ export default function Informes() {
                     </td>
                     <td className="px-6 py-4 text-gray-600">{r.materia}</td>
                     <td className="px-6 py-4"><span className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">{r.estado}</span></td>
+                    <td className="px-6 py-4 text-gray-600">{r.curso || 'Sin curso'}</td>
                   </>
                 )}
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td className="px-6 py-12 text-center text-gray-600" colSpan={tab === 'curso' ? 6 : 3}>No hay datos para mostrar</td></tr>
+              <tr><td className="px-6 py-12 text-center text-gray-600" colSpan={tab === 'curso' ? 6 : 4}>No hay datos para mostrar</td></tr>
             )}
           </tbody>
         </table>
