@@ -43,38 +43,54 @@ export default function Historial() {
     return colors[color] || colors.gray
   }
 
+  // Helper para formatear valores en "Ver más info"
+  const renderValue = (val) => {
+    if (val === true) return 'Sí'
+    if (val === false) return 'No'
+    if (typeof val === 'object' && val !== null) {
+      return (
+        <div className="pl-2 border-l-2 border-gray-200 mt-1">
+          {Object.entries(val).map(([subKey, subVal]) => (
+            <div key={subKey} className="text-xs text-gray-600">
+              <span className="font-medium capitalize">{subKey.replace(/_/g, ' ')}:</span> {renderValue(subVal)}
+            </div>
+          ))}
+        </div>
+      )
+    }
+    return val
+  }
+
   // Renderizar detalles principales según tipo de acción
   const renderDetallesPrincipales = (accion) => {
     if (!accion) return null
     const tipo = accion.tipo || ''
+    // Support both nested 'detalles' (legacy/expected) and flattened properties (current logger)
+    const datos = accion.detalles || accion
 
     switch (tipo) {
       case 'CREAR_ASISTENCIA':
       case 'ACTUALIZAR_ASISTENCIA':
         return (
           <div className="space-y-2">
-            {accion.detalles?.alumno_id && (
+            <div className="text-sm">
+              <span className="font-medium text-gray-700">Alumno:</span> {datos.alumno_nombre || datos.alumno_id}
+            </div>
+            <div className="text-sm">
+              <span className="font-medium text-gray-700">Materia:</span> {datos.materia_nombre || datos.materia_id}
+            </div>
+            {datos.fecha && (
               <div className="text-sm">
-                <span className="font-medium text-gray-700">Alumno ID:</span> {accion.detalles.alumno_id}
+                <span className="font-medium text-gray-700">Fecha:</span> {datos.fecha}
               </div>
             )}
-            {accion.detalles?.materia_id && (
-              <div className="text-sm">
-                <span className="font-medium text-gray-700">Materia ID:</span> {accion.detalles.materia_id}
-              </div>
-            )}
-            {accion.detalles?.fecha && (
-              <div className="text-sm">
-                <span className="font-medium text-gray-700">Fecha:</span> {accion.detalles.fecha}
-              </div>
-            )}
-            {accion.detalles?.estado_nuevo && (
+            {datos.estado_nuevo && (
               <div className="text-sm">
                 <span className="font-medium text-gray-700">Estado:</span>
                 <div className="mt-1 inline-flex gap-2">
-                  {accion.detalles.estado_nuevo.presente && <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">Presente</span>}
-                  {accion.detalles.estado_nuevo.tarde && <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded">Tarde</span>}
-                  {accion.detalles.estado_nuevo.justificada && <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">Justificada</span>}
+                  {datos.estado_nuevo.presente && <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">Presente</span>}
+                  {datos.estado_nuevo.tarde && <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded">Tarde</span>}
+                  {datos.estado_nuevo.justificada && <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">Justificada</span>}
                 </div>
               </div>
             )}
@@ -85,26 +101,74 @@ export default function Historial() {
       case 'ACTUALIZAR_USUARIO':
         return (
           <div className="space-y-2">
-            {accion.detalles?.email && (
+            {datos.email && (
               <div className="text-sm">
-                <span className="font-medium text-gray-700">Email:</span> {accion.detalles.email}
+                <span className="font-medium text-gray-700">Email:</span> {datos.email}
               </div>
             )}
-            {accion.detalles?.nombre && (
+            {datos.nombre && (
               <div className="text-sm">
-                <span className="font-medium text-gray-700">Nombre:</span> {accion.detalles.nombre}
+                <span className="font-medium text-gray-700">Nombre:</span> {datos.nombre}
               </div>
             )}
-            {accion.detalles?.apellido && (
+            {datos.apellido && (
               <div className="text-sm">
-                <span className="font-medium text-gray-700">Apellido:</span> {accion.detalles.apellido}
+                <span className="font-medium text-gray-700">Apellido:</span> {datos.apellido}
               </div>
             )}
-            {accion.detalles?.rol && (
+            {datos.rol && (
               <div className="text-sm">
-                <span className="font-medium text-gray-700">Rol:</span> <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded">{accion.detalles.rol}</span>
+                <span className="font-medium text-gray-700">Rol:</span> <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded">{datos.rol}</span>
               </div>
             )}
+          </div>
+        )
+
+      case 'CARGA_LISTA_ASISTENCIA':
+        return (
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-gray-900">
+              {datos.curso} - {datos.materia}
+            </div>
+            {datos.resumen && (
+              <div className="flex flex-wrap gap-2 mt-1">
+                <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded border border-green-200" title="Presentes">
+                  P: {datos.resumen.presentes}
+                </span>
+                <span className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded border border-red-200" title="Ausentes">
+                  A: {datos.resumen.ausentes}
+                </span>
+                <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded border border-yellow-200" title="Tardes">
+                  T: {datos.resumen.tardes}
+                </span>
+                <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded border border-blue-200" title="Justificados">
+                  J: {datos.resumen.justificados}
+                </span>
+              </div>
+            )}
+            <div className="text-xs text-gray-500 mt-1">
+              Total alumnos: {datos.resumen?.total || 0}
+            </div>
+            <div className="text-sm text-gray-600 mt-2">
+              <details className="cursor-pointer group">
+                <summary className="font-medium text-blue-600 hover:text-blue-800 text-xs list-none flex items-center gap-1">
+                  <span className="group-open:hidden">▶ Ver más info</span>
+                  <span className="hidden group-open:inline">▼ Ocultar info</span>
+                </summary>
+                <div className="mt-2 bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs">
+                  <div className="grid grid-cols-1 gap-2">
+                    {Object.entries(datos)
+                      .filter(([key]) => !['tipo', 'alumno_nombre', 'materia_nombre'].includes(key))
+                      .map(([key, value]) => (
+                        <div key={key} className="flex flex-col sm:flex-row sm:gap-2 border-b border-gray-100 last:border-0 pb-1 last:pb-0 items-start">
+                          <span className="font-semibold text-gray-600 capitalize min-w-[100px]">{key.replace(/_/g, ' ')}:</span>
+                          <span className="text-gray-800 break-all whitespace-pre-wrap flex-1">{renderValue(value)}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </details>
+            </div>
           </div>
         )
 
@@ -116,12 +180,24 @@ export default function Historial() {
         )
 
       default:
-        return accion.detalles ? (
+        return datos ? (
           <div className="text-sm text-gray-600">
-            <details className="cursor-pointer">
-              <summary className="font-medium text-gray-700 hover:text-gray-900">Ver detalles</summary>
-              <div className="mt-2 bg-gray-50 p-2 rounded text-xs overflow-x-auto">
-                <pre>{JSON.stringify(accion.detalles, null, 2)}</pre>
+            <details className="cursor-pointer group">
+              <summary className="font-medium text-gray-700 hover:text-gray-900 list-none flex items-center gap-1">
+                <span className="group-open:hidden">▶ Ver detalles</span>
+                <span className="hidden group-open:inline">▼ Ocultar detalles</span>
+              </summary>
+              <div className="mt-2 bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs">
+                <div className="grid grid-cols-1 gap-2">
+                  {Object.entries(datos)
+                    .filter(([key]) => key !== 'tipo')
+                    .map(([key, value]) => (
+                      <div key={key} className="flex flex-col sm:flex-row sm:gap-2 border-b border-gray-100 last:border-0 pb-1 last:pb-0 items-start">
+                        <span className="font-semibold text-gray-600 capitalize min-w-[100px]">{key.replace(/_/g, ' ')}:</span>
+                        <span className="text-gray-800 break-all whitespace-pre-wrap flex-1">{renderValue(value)}</span>
+                      </div>
+                    ))}
+                </div>
               </div>
             </details>
           </div>
@@ -160,13 +236,13 @@ export default function Historial() {
     if (!fechaHora) return '-'
     try {
       const fecha = new Date(fechaHora)
-      const fechaStr = fecha.toLocaleDateString('es-ES', { 
-        day: '2-digit', 
-        month: 'short', 
-        year: 'numeric' 
+      const fechaStr = fecha.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
       })
-      const horaStr = fecha.toLocaleTimeString('es-ES', { 
-        hour: '2-digit', 
+      const horaStr = fecha.toLocaleTimeString('es-ES', {
+        hour: '2-digit',
         minute: '2-digit',
         second: '2-digit'
       })
@@ -182,10 +258,10 @@ export default function Historial() {
     if (desde) params.desde = new Date(desde).toISOString().split('T')[0]
     if (hasta) params.hasta = new Date(hasta).toISOString().split('T')[0]
     if (nombreUsuario) params.nombre = nombreUsuario
-    
+
     try {
       setLoading(true)
-      const { data } = await api.get('/historial', { 
+      const { data } = await api.get('/historial', {
         params,
         paramsSerializer: params => {
           return Object.entries(params)
@@ -312,8 +388,8 @@ export default function Historial() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {rows.map((r, idx) => (
-                    <tr 
-                      key={r.id_historial} 
+                    <tr
+                      key={r.id_historial}
                       className={`transition-colors duration-100 hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
                     >
                       {/* Fecha y Hora */}
@@ -345,7 +421,7 @@ export default function Historial() {
               </table>
             </div>
           )}
-          
+
           {/* Footer con contador */}
           {rows.length > 0 && (
             <div className="bg-gray-50 border-t border-gray-200 px-6 py-3">

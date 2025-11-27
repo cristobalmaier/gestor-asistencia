@@ -173,11 +173,35 @@ router.post('/pasar-lista', async (req, res) => {
     const operations = [];
     const createdBy = req.user.id_usuario;
 
+    // Obtener nombres de curso y materia para el log
+    const { data: cursoData } = await supabase
+      .from('curso')
+      .select('curso')
+      .eq('id', cursoId)
+      .single();
+
+    const { data: materiaData } = await supabase
+      .from('materias')
+      .select('nombre')
+      .eq('id', materiaId)
+      .single();
+
+    const cursoNombre = cursoData?.curso || 'Desconocido';
+    const materiaNombre = materiaData?.nombre || 'Desconocida';
+
+    const stats = {
+      presentes: 0,
+      ausentes: 0,
+      tardes: 0,
+      justificados: 0,
+      total: 0
+    };
+
     for (const it of items) {
       const { alumnoId, estado } = it;
       if (!alumnoId || !estado) continue;
 
-      // 1. Verificar que el alumno pertenece al curso (Lógica pendiente en tu código original, se ha añadido la consulta)
+      // 1. Verificar que el alumno pertenece al curso
       const { data: alumno, error: alumnoError } = await supabase
         .from('alumno')
         .select('id')
@@ -186,8 +210,6 @@ router.post('/pasar-lista', async (req, res) => {
         .single();
 
       if (alumnoError || !alumno) {
-        // Si el alumno no existe o no pertenece al curso, simplemente lo ignoramos o lanzamos un error.
-        // Aquí optamos por ignorar y continuar. Si deseas fallar, usa 'throw alumnoError'.
         console.warn(`Alumno ${alumnoId} no encontrado o no pertenece al curso ${cursoId}.`);
         continue;
       }
@@ -197,6 +219,13 @@ router.post('/pasar-lista', async (req, res) => {
       const tarde = estado === 'Tarde';
       const justificada = estado === 'Justificado';
 
+      // Actualizar estadísticas
+      stats.total++;
+      if (presente) stats.presentes++;
+      else if (tarde) stats.tardes++;
+      else if (justificada) stats.justificados++;
+      else stats.ausentes++;
+
       const record = {
         id_alumno: alumnoId,
         id_materia: materiaId,
@@ -205,7 +234,6 @@ router.post('/pasar-lista', async (req, res) => {
         tarde: tarde,
         justificada: justificada,
         created_by: createdBy,
-        // Si tienes observaciones, las añadirías aquí: observaciones: it.observaciones,
       };
 
       // 3. Buscar asistencia existente para el alumno/materia/fecha
@@ -217,35 +245,12 @@ router.post('/pasar-lista', async (req, res) => {
         .eq('fecha', fecha)
         .single();
 
-      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116: No rows found
+      if (fetchError && fetchError.code !== 'PGRST116') {
         throw fetchError;
       }
 
       // 4. Decidir si actualizar o insertar (Upsert)
       if (existing) {
-        // Log de la acción de actualización
-        await registrarAccion({
-          idUsuario: createdBy,
-          accion: ACCIONES.ACTUALIZAR_ASISTENCIA,
-          tablaAfectada: TABLAS.ASISTENCIAS,
-          idRegistroAfectado: existing.id,
-          detalles: {
-            estado_anterior: {
-              presente: existing.presente,
-              tarde: existing.tarde,
-              justificada: existing.justificada
-            },
-            estado_nuevo: {
-              presente: presente,
-              tarde: tarde,
-              justificada: justificada
-            },
-            alumno_id: alumnoId,
-            materia_id: materiaId,
-            fecha: fecha
-          }
-        });
-        // Si existe, actualizamos
         operations.push(
           supabase
             .from('asistencias')
@@ -253,32 +258,6 @@ router.post('/pasar-lista', async (req, res) => {
             .eq('id', existing.id)
         );
       } else {
-        // Insertar nuevo registro
-        const { data: inserted, error: insertError } = await supabase
-          .from('asistencias')
-          .insert(record)
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-
-        // Log de la acción de creación
-        await registrarAccion({
-          idUsuario: createdBy,
-          accion: ACCIONES.CREAR_ASISTENCIA,
-          tablaAfectada: TABLAS.ASISTENCIAS,
-          idRegistroAfectado: inserted.id,
-          detalles: {
-            estado: {
-              presente: presente,
-              tarde: tarde,
-              justificada: justificada
-            },
-            alumno_id: alumnoId,
-            materia_id: materiaId,
-            fecha: fecha
-          }
-        });
         operations.push(
           supabase
             .from('asistencias')
@@ -289,6 +268,20 @@ router.post('/pasar-lista', async (req, res) => {
 
     // Ejecutar todas las operaciones de forma concurrente
     await Promise.all(operations);
+
+    // Log de la acción masiva (una sola vez)
+    await registrarAccion({
+      idUsuario: createdBy,
+      accion: ACCIONES.CARGA_LISTA_ASISTENCIA,
+      tablaAfectada: TABLAS.ASISTENCIAS,
+      idRegistroAfectado: `${cursoId}-${materiaId}-${fecha}`, // ID compuesto lógico
+      detalles: {
+        curso: cursoNombre,
+        materia: materiaNombre,
+        fecha: fecha,
+        resumen: stats
+      }
+    });
 
     return res.json({ ok: true, message: 'Lista pasada con éxito.' });
   } catch (e) {
