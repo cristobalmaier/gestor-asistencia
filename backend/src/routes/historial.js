@@ -4,7 +4,7 @@ import { supabase } from '../db.js';
 const router = Router();
 
 router.get('/', async (req, res) => {
-  const { desde, hasta, id_usuario } = req.query;
+  const { desde, hasta, id_usuario, nombre } = req.query;
   
   try {
     let query = supabase
@@ -23,6 +23,7 @@ router.get('/', async (req, res) => {
     if (desde) query = query.gte('fecha_hora', desde);
     if (hasta) query = query.lte('fecha_hora', hasta + 'T23:59:59'); // Incluir todo el día
     if (id_usuario) query = query.eq('id_usuario', id_usuario);
+    // Nota: El filtro por nombre se aplica después de obtener los datos
     
     // Ordenar por fecha más reciente primero
     query = query.order('fecha_hora', { ascending: false });
@@ -37,23 +38,40 @@ router.get('/', async (req, res) => {
     // Obtener información de usuarios desde public.users
     const usuariosSet = new Set(data.map(d => d.id_usuario).filter(Boolean));
     let usuariosMap = {};
+    let filteredData = [...data]; // Creamos una copia modificable de los datos
     
     if (usuariosSet.size > 0) {
-      const { data: usuarios, error: usuariosError } = await supabase
+      let query = supabase
         .from('users')
-        .select('id, nombre, apellido, email')
-        .in('id', Array.from(usuariosSet));
+        .select('id, nombre, apellido, email');
+      
+      // Si hay búsqueda por nombre, aplicamos el filtro
+      if (nombre) {
+        query = query.or(`nombre.ilike.%${nombre}%,apellido.ilike.%${nombre}%`)
+      } else {
+        // Si no hay búsqueda, solo obtenemos los usuarios del historial
+        query = query.in('id', Array.from(usuariosSet));
+      }
+      
+      const { data: usuarios, error: usuariosError } = await query;
       
       if (!usuariosError && usuarios) {
+        // Creamos el mapa de usuarios
         usuariosMap = usuarios.reduce((acc, u) => {
           acc[u.id] = u;
           return acc;
         }, {});
+        
+        // Si hay búsqueda por nombre, filtramos los resultados del historial
+        if (nombre) {
+          const usuariosIds = new Set(usuarios.map(u => u.id));
+          filteredData = data.filter(item => usuariosIds.has(item.id_usuario));
+        }
       }
     }
     
     // Formatear los datos para la respuesta
-    const formattedData = data.map(item => {
+    const formattedData = filteredData.map(item => {
       // Parsear la acción si es JSON
       let accion = item.accion;
       if (typeof accion === 'string') {

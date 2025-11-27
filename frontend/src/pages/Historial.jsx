@@ -20,7 +20,7 @@ const ACCION_CONFIG = {
 export default function Historial() {
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
-  const [idUsuario, setIdUsuario] = useState('')
+  const [nombreUsuario, setNombreUsuario] = useState('')
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
 
@@ -178,21 +178,45 @@ export default function Historial() {
 
   const cargar = async () => {
     const params = {}
-    if (desde) params.desde = desde
-    if (hasta) params.hasta = hasta
-    if (idUsuario) params.id_usuario = idUsuario
+    // Formatear fechas para asegurar el formato correcto
+    if (desde) params.desde = new Date(desde).toISOString().split('T')[0]
+    if (hasta) params.hasta = new Date(hasta).toISOString().split('T')[0]
+    if (nombreUsuario) params.nombre = nombreUsuario
+    
     try {
       setLoading(true)
-      const { data } = await api.get('/historial', { params })
-      setRows(data)
+      const { data } = await api.get('/historial', { 
+        params,
+        paramsSerializer: params => {
+          return Object.entries(params)
+            .filter(([_, value]) => value !== '' && value !== null && value !== undefined)
+            .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+            .join('&')
+        }
+      })
+      setRows(data || [])
     } catch (err) {
       console.error('Error cargando historial', err)
+      // Mostrar mensaje de error al usuario
+      alert('Error al cargar el historial. Por favor, intente nuevamente.')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => { cargar() }, [])
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    cargar()
+  }
+
+  const limpiarFiltros = () => {
+    setDesde('')
+    setHasta('')
+    setNombreUsuario('')
+    cargar() // Cargar sin filtros al limpiar
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -206,53 +230,61 @@ export default function Historial() {
         {/* Filtros */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Filtrar por:</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">Desde</label>
-              <input 
-                type="date" 
-                value={desde} 
-                onChange={e => setDesde(e.target.value)} 
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
+              <label htmlFor="desde" className="block text-sm font-medium text-gray-700 mb-1">
+                Desde
+              </label>
+              <input
+                type="date"
+                id="desde"
+                value={desde}
+                onChange={(e) => setDesde(e.target.value)}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">Hasta</label>
-              <input 
-                type="date" 
-                value={hasta} 
-                onChange={e => setHasta(e.target.value)} 
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
+              <label htmlFor="hasta" className="block text-sm font-medium text-gray-700 mb-1">
+                Hasta
+              </label>
+              <input
+                type="date"
+                id="hasta"
+                value={hasta}
+                onChange={(e) => setHasta(e.target.value)}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">Usuario</label>
-              <input 
+              <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 mb-1">
+                Nombre de Usuario
+              </label>
+              <input
                 type="text"
-                value={idUsuario} 
-                onChange={e => setIdUsuario(e.target.value)} 
-                placeholder="ID o nombre..."
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
+                id="nombre"
+                value={nombreUsuario}
+                onChange={(e) => setNombreUsuario(e.target.value)}
+                placeholder="Buscar por nombre..."
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               />
             </div>
-            <div className="flex items-end">
-              <button 
-                onClick={cargar} 
+            <div className="flex items-end space-x-2">
+              <button
+                type="submit"
                 disabled={loading}
-                className="w-full px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {loading ? (
-                  <>
-                    Buscando...
-                  </>
-                ) : (
-                  <>
-                    Buscar
-                  </>
-                )}
+                {loading ? 'Buscando...' : 'Buscar'}
+              </button>
+              <button
+                type="button"
+                onClick={limpiarFiltros}
+                className="px-4 py-2.5 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Limpiar
               </button>
             </div>
-          </div>
+          </form>
         </div>
 
         {/* Tabla de historial */}
