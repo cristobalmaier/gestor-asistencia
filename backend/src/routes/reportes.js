@@ -43,7 +43,8 @@ router.get('/curso', async (req, res) => {
         id_alumno,
         presente,
         justificada,
-        alumno:alumno(id, nombre, apellido)
+        tarde,
+        alumno!id_alumno(id, nombre, apellido, id_curso)
       `)
       .in('id_materia', materiaIds);
     
@@ -56,29 +57,15 @@ router.get('/curso', async (req, res) => {
     // Agrupar por alumno
     const alumnosMap = new Map();
     
-    // Obtener información de los alumnos para mostrar el curso cuando se seleccionan todos
-    const { data: alumnosData } = await supabase
-      .from('alumnos')
-      .select('id, nombre, apellido, curso:curso_id(nombre, anio, division)');
-    
-    const alumnosInfo = alumnosData?.reduce((acc, alumno) => {
-      acc[alumno.id] = {
-        ...alumno,
-        cursoNombre: alumno.curso ? `${alumno.curso.nombre} ${alumno.curso.anio}°${alumno.curso.division}` : 'Sin curso'
-      };
-      return acc;
-    }, {}) || {};
-    
     asistencias.forEach(a => {
       const alumnoId = a.id_alumno;
-      const alumnoInfo = alumnosInfo[alumnoId] || {};
       
       if (!alumnosMap.has(alumnoId)) {
         alumnosMap.set(alumnoId, {
           id_alumno: alumnoId,
-          nombre: alumnoInfo.nombre || '',
-          apellido: alumnoInfo.apellido || '',
-          curso: cursoId === 'todos' ? alumnoInfo.cursoNombre : undefined,
+          nombre: a.alumno?.nombre || '',
+          apellido: a.alumno?.apellido || '',
+          curso: cursoId === 'todos' ? '' : undefined,
           presentes: 0,
           ausentes: 0,
           tardes: 0,
@@ -92,6 +79,8 @@ router.get('/curso', async (req, res) => {
       
       if (a.presente) {
         alumno.presentes++;
+      } else if (a.tarde) {
+        alumno.tardes++;
       } else if (a.justificada) {
         alumno.justificados++;
       } else {
@@ -246,6 +235,7 @@ router.get('/alumno', async (req, res) => {
       .select(`
         fecha,
         presente,
+        tarde,
         justificada,
         materia:materias(id, nombre)
       `)
@@ -263,7 +253,7 @@ router.get('/alumno', async (req, res) => {
     const rows = asistencias.map(a => ({
       fecha: a.fecha,
       materia: a.materia?.nombre || '',
-      estado: a.presente ? 'Presente' : (a.justificada ? 'Justificado' : 'Ausente')
+      estado: a.presente ? 'Presente' : (a.tarde ? 'Tarde' : (a.justificada ? 'Justificado' : 'Ausente'))
     }));
     
     if (formatType === 'csv') {
@@ -449,7 +439,8 @@ router.get('/dashboard', async (req, res) => {
     const upcomingEvents = eventos.map(e => ({
       id_evento: e.id,
       fecha: e.fecha_inicio.split('T')[0],
-      descripcion: e.titulo + (e.descripcion ? ` - ${e.descripcion}` : ''),
+      titulo: e.titulo,
+      descripcion: e.descripcion,
       id_curso: e.id_curso,
       curso_info: e.curso ? e.curso.curso : 'General'
     }));

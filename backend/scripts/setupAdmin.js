@@ -24,26 +24,22 @@ async function setupAdmin() {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(adminPassword, salt);
 
-    // Datos del administrador
+    // Datos del administrador en public.users
     const adminData = {
       id: adminId,
-      user_id: adminId,
-      first_name: 'Admin',
-      last_name: 'Sistema',
       email: adminEmail,
-      dni: '87654321',
-      phone: '+5491188776655',
-      employment_status: 'titular',
-      is_active: true,
       contraseña: hashedPassword,
+      nombre: 'Admin',
+      apellido: 'Sistema',
+      rol: 'admin',
+      full_name: 'Admin Sistema',
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      created_by: adminId
+      updated_at: new Date().toISOString()
     };
 
     // Verificar si el admin ya existe
     const { data: existingAdmin, error: findError } = await supabase
-      .from('teachers')
+      .from('users')
       .select('*')
       .eq('email', adminEmail)
       .single();
@@ -55,11 +51,14 @@ async function setupAdmin() {
     if (existingAdmin) {
       // Actualizar admin existente
       const { data: updatedAdmin, error: updateError } = await supabase
-        .from('teachers')
+        .from('users')
         .update({
-          ...adminData,
-          id: existingAdmin.id,
-          user_id: existingAdmin.user_id || existingAdmin.id
+          contraseña: hashedPassword,
+          nombre: 'Admin',
+          apellido: 'Sistema',
+          rol: 'admin',
+          full_name: 'Admin Sistema',
+          updated_at: new Date().toISOString()
         })
         .eq('id', existingAdmin.id)
         .select()
@@ -70,7 +69,7 @@ async function setupAdmin() {
     } else {
       // Crear nuevo admin
       const { data: newAdmin, error: createError } = await supabase
-        .from('teachers')
+        .from('users')
         .insert(adminData)
         .select()
         .single();
@@ -79,12 +78,12 @@ async function setupAdmin() {
       console.log('✅ Nuevo usuario administrador creado:', newAdmin.email);
     }
 
-    // Asignar rol de administrador
+    // Asignar rol de administrador en usuarios_roles
     const { error: roleError } = await supabase
-      .from('user_roles')
+      .from('usuarios_roles')
       .upsert({
         user_id: adminId,
-        role: 'admin',
+        rol: 'admin',
         created_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
 

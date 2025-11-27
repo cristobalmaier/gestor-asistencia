@@ -13,7 +13,8 @@ export default function Calendario() {
   const [cursos, setCursos] = useState([])
   const [cursoId, setCursoId] = useState('')
   const [eventos, setEventos] = useState([])
-  const [desc, setDesc] = useState('')
+  const [titulo, setTitulo] = useState('')
+  const [descripcion, setDescripcion] = useState('')
   const [resumen, setResumen] = useState(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
@@ -49,19 +50,21 @@ export default function Calendario() {
   useEffect(() => { cargar() }, [fecha, cursoId])
 
   const crearEvento = async () => {
-    if (!fecha || !desc) return alert('Fecha y descripción requeridas')
+    if (!fecha || !titulo) return alert('Fecha y nombre del evento requeridos')
     try {
-      await api.post('/calendario', { fecha, descripcion: desc, cursoId: cursoId || null })
-      setDesc('')
+      await api.post('/calendario', { fecha, titulo, descripcion: descripcion || null, cursoId: cursoId || null })
+      setTitulo('')
+      setDescripcion('')
       await cargar()
     } catch (e) { alert('No se pudo crear el evento (requiere preceptor o admin)') }
   }
 
   const actualizarEvento = async () => {
-    if (!editingEvent || !editingEvent.descripcion) return
+    if (!editingEvent || !editingEvent.titulo) return
     try {
       await api.put(`/calendario/${editingEvent.id_evento}`, {
-        descripcion: editingEvent.descripcion,
+        titulo: editingEvent.titulo,
+        descripcion: editingEvent.descripcion || null,
         cursoId: cursoId || null
       })
       setIsEditModalOpen(false)
@@ -118,10 +121,14 @@ export default function Calendario() {
       {['preceptor','admin'].includes(user.rol) && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="font-semibold text-gray-900 mb-4">Crear nuevo evento</h3>
-          <div className="grid md:grid-cols-4 gap-4 items-end">
-            <div className="md:col-span-3">
-              <label className="block text-sm font-medium text-gray-900 mb-1.5">Descripción</label>
-              <input className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors" placeholder="Ej: Acto escolar 9hs" value={desc} onChange={e => setDesc(e.target.value)} />
+          <div className="grid md:grid-cols-5 gap-4 items-end">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-900 mb-1.5">Nombre del evento *</label>
+              <input className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors" placeholder="Ej: Acto escolar" value={titulo} onChange={e => setTitulo(e.target.value)} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-900 mb-1.5">Descripción (opcional)</label>
+              <input className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors" placeholder="Ej: A las 9hs en el patio" value={descripcion} onChange={e => setDescripcion(e.target.value)} />
             </div>
             <div>
               <button onClick={crearEvento} className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors">Agregar evento</button>
@@ -160,6 +167,7 @@ export default function Calendario() {
             <tr>
               <th className="text-left px-6 py-4">Fecha</th>
               <th className="text-left px-6 py-4">Curso</th>
+              <th className="text-left px-6 py-4">Nombre del evento</th>
               <th className="text-left px-6 py-4">Descripción</th>
               {['preceptor', 'admin'].includes(user.rol) && (
                 <th className="text-right px-6 py-4">Acciones</th>
@@ -175,7 +183,8 @@ export default function Calendario() {
                 <td className="px-6 py-4">
                   <span className="text-gray-600">{ev.curso_nombre || 'Todos'}</span>
                 </td>
-                <td className="px-6 py-4 text-gray-900">{ev.descripcion}</td>
+                <td className="px-6 py-4 text-gray-900 font-medium">{ev.titulo}</td>
+                <td className="px-6 py-4 text-gray-600">{ev.descripcion || '-'}</td>
                 {['preceptor', 'admin'].includes(user.rol) && (
                   <td className="px-6 py-4 text-right text-sm font-medium">
                     <button
@@ -198,7 +207,7 @@ export default function Calendario() {
               </tr>
             ))}
             {eventos.length === 0 && (
-              <tr><td className="px-6 py-12 text-center text-gray-600" colSpan={3}>No hay eventos para mostrar</td></tr>
+              <tr><td className="px-6 py-12 text-center text-gray-600" colSpan={4}>No hay eventos para mostrar</td></tr>
             )}
           </tbody>
         </table>
@@ -234,10 +243,26 @@ export default function Calendario() {
                   <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-gray-900">
                     Editar Evento
                   </Dialog.Title>
-                  <div className="mt-4">
-                    <div className="mb-4">
+                  <div className="mt-4 space-y-4">
+                    <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Descripción
+                        Nombre del evento *
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        value={editingEvent?.titulo || ''}
+                        onChange={(e) =>
+                          setEditingEvent({
+                            ...editingEvent,
+                            titulo: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Descripción (opcional)
                       </label>
                       <input
                         type="text"

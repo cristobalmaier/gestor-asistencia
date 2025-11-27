@@ -25,8 +25,16 @@ export const registrarAccion = async ({
         ...detalles
       },
       tabla_afectada: tablaAfectada,
-      id_registro_afectado: idRegistroAfectado
+      id_registro_afectado: idRegistroAfectado,
+      fecha_hora: new Date().toISOString()
     };
+
+    console.log('Registrando acción en historial:', {
+      usuario: idUsuario,
+      accion,
+      tabla: tablaAfectada,
+      registro: idRegistroAfectado
+    });
 
     const { data, error } = await supabase
       .from('historial-registro')
@@ -35,9 +43,11 @@ export const registrarAccion = async ({
 
     if (error) {
       console.error('Error al registrar acción en el historial:', error);
-      throw error;
+      // No lanzamos el error para no interrumpir el flujo principal
+      return null;
     }
 
+    console.log('✅ Acción registrada exitosamente');
     return data?.[0] || null;
   } catch (error) {
     console.error('Error en registrarAccion:', error);
@@ -48,18 +58,37 @@ export const registrarAccion = async ({
 
 // Tipos de acciones comunes
 export const ACCIONES = {
+  // Autenticación
+  INICIO_SESION: 'INICIO_SESION',
+  REGISTRO_USUARIO: 'REGISTRO_USUARIO',
+  CIERRE_SESION: 'CIERRE_SESION',
+  
+  // Usuarios
+  CREAR_USUARIO: 'CREAR_USUARIO',
+  ACTUALIZAR_USUARIO: 'ACTUALIZAR_USUARIO',
+  ELIMINAR_USUARIO: 'ELIMINAR_USUARIO',
+  ACTUALIZAR_PERFIL: 'ACTUALIZAR_PERFIL',
+  
   // Asistencias
   CREAR_ASISTENCIA: 'CREAR_ASISTENCIA',
   ACTUALIZAR_ASISTENCIA: 'ACTUALIZAR_ASISTENCIA',
   ELIMINAR_ASISTENCIA: 'ELIMINAR_ASISTENCIA',
+  CARGA_LISTA_ASISTENCIA: 'CARGA_LISTA_ASISTENCIA',
   
   // Cursos
   CREAR_CURSO: 'CREAR_CURSO',
   ACTUALIZAR_CURSO: 'ACTUALIZAR_CURSO',
+  ELIMINAR_CURSO: 'ELIMINAR_CURSO',
   
-  // Usuarios
-  INICIO_SESION: 'INICIO_SESION',
-  ACTUALIZAR_PERFIL: 'ACTUALIZAR_PERFIL'
+  // Materias
+  CREAR_MATERIA: 'CREAR_MATERIA',
+  ACTUALIZAR_MATERIA: 'ACTUALIZAR_MATERIA',
+  ELIMINAR_MATERIA: 'ELIMINAR_MATERIA',
+  
+  // Alumnos
+  CREAR_ALUMNO: 'CREAR_ALUMNO',
+  ACTUALIZAR_ALUMNO: 'ACTUALIZAR_ALUMNO',
+  ELIMINAR_ALUMNO: 'ELIMINAR_ALUMNO'
 };
 
 // Tablas comunes

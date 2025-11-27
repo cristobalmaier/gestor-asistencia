@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs';
 import { authorize } from '../middleware/roleAuth.js';
 import { authenticate } from '../middleware/auth.js';
 import crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
+import { registrarAccion, ACCIONES, TABLAS } from '../utils/logger.js';
 
 const router = Router();
 
@@ -13,57 +15,37 @@ router.use(authenticate);
 // Obtener todos los usuarios (Solo admin)
 router.get('/', authorize(['admin']), async (req, res) => {
   try {
-    // Obtener teachers sin JOIN (consulta separada para roles)
-    const { data: teachers, error: teachersError } = await supabase
-      .from('teachers')
-      .select('id, user_id, first_name, last_name, email, dni, employment_status, is_active')
-      .order('last_name')
-      .order('first_name');
+    // Obtener usuarios desde public.users
+    const { data: usuarios, error: usuariosError } = await supabase
+      .from('users')
+      .select('id, email, nombre, apellido, rol')
+      .order('apellido')
+      .order('nombre');
 
-    if (teachersError) throw teachersError;
+    if (usuariosError) throw usuariosError;
 
-    // Obtener roles de todos los teachers desde usuarios_roles
+    // Obtener roles de usuarios_roles para obtener roles más actualizados
     const { data: roles, error: rolesError } = await supabase
       .from('usuarios_roles')
       .select('user_id, rol');
 
     if (rolesError) console.error('Error al obtener roles:', rolesError);
 
-    // Obtener padres
-    const { data: padres, error: padresError } = await supabase
-      .from('padres')
-      .select('id, user_id, nombre, apellido, email, dni, telefono')
-      .order('apellido')
-      .order('nombre');
+    // Transformar usuarios al formato esperado
+    const usuariosFormatados = usuarios.map(u => {
+      const userRole = roles?.find(r => r.user_id === u.id);
+      return {
+        id: u.id,
+        nombre: u.nombre,
+        apellido: u.apellido,
+        email: u.email,
+        dni: '',
+        rol: userRole?.rol || u.rol || 'profesor',
+        tipo: 'usuario'
+      };
+    });
 
-    if (padresError) throw padresError;
-
-    // Transformar teachers al formato esperado
-    const usuarios = [
-      ...teachers.map(t => {
-        const userRole = roles?.find(r => r.user_id === (t.user_id || t.id));
-        return {
-          id: t.id,
-          nombre: t.first_name,
-          apellido: t.last_name,
-          email: t.email,
-          dni: t.dni,
-          rol: userRole?.rol || 'profesor',
-          tipo: 'teacher'
-        };
-      }),
-      ...padres.map(p => ({
-        id: p.id,
-        nombre: p.nombre,
-        apellido: p.apellido,
-        email: p.email,
-        dni: p.dni,
-        rol: 'padre',
-        tipo: 'padre'
-      }))
-    ];
-
-    return res.json(usuarios);
+    return res.json(usuariosFormatados);
   } catch (e) {
     console.error('Error en GET /usuarios:', e);
     return res.status(500).json({ message: 'Error al obtener usuarios' });
@@ -72,7 +54,7 @@ router.get('/', authorize(['admin']), async (req, res) => {
 
 // Crear usuario (Solo admin)
 router.post('/', authorize(['admin']), async (req, res) => {
-  const { nombre, apellido, email, rol, password, dni } = req.body || {};
+  const { nombre, apellido, email, rol, password } = req.body || {};
 
   console.log("BODY RECIBIDO EN POST /usuarios:", req.body);
 
@@ -86,79 +68,105 @@ router.post('/', authorize(['admin']), async (req, res) => {
   }
 
   try {
-    // 1. Crear usuario en Supabase Auth
-    console.log('Intentando crear usuario en Supabase Auth con email:', email);
-    console.log('URL de Supabase:', process.env.SUPABASE_URL);
+    // Verificar si el usuario ya existe
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
 
-    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        name: `${nombre} ${apellido}`,
-        role: rol
-      }
-    });
-
-    if (authError) {
-      console.error('Error detallado al crear usuario en Supabase Auth:', {
-        message: authError.message,
-        status: authError.status,
-        code: authError.code,
-        details: authError.error_description || 'Sin detalles adicionales'
-      });
-      throw new Error(`Error al crear el usuario en el sistema de autenticación: ${authError.message}`);
+    if (existingUser) {
+      return res.status(400).json({ message: 'Ya existe un usuario con este correo electrónico' });
     }
 
-    console.log('Usuario creado exitosamente en Supabase Auth:', authUser.user.id);
-    const userId = authUser.user.id;
+    // Hashear la contraseña
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 2. Crear usuario en la tabla teachers
-    const { data: teacher, error: teacherError } = await supabase
-      .from('teachers')
+    // 1. Verificar que el rol sea válido (admin, profesor o preceptor)
+    const rolesPermitidos = ['admin', 'profesor', 'preceptor'];
+    if (!rolesPermitidos.includes(rol)) {
+      return res.status(400).json({ 
+        message: 'Rol no válido. Los roles permitidos son: admin, profesor, preceptor' 
+      });
+    }
+
+    // 2. Obtener el ID del usuario de autenticación correspondiente al rol
+    const { data: authUser, error: authError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('rol', rol)
+      .limit(1)
+      .single();
+
+    if (authError || !authUser) {
+      console.error('Error al obtener usuario de autenticación para el rol:', rol, authError);
+      throw new Error('No se pudo asociar el usuario a una cuenta de autenticación válida');
+    }
+
+    const userId = authUser.id;
+    console.log('Asociando a cuenta de autenticación existente con ID:', userId);
+    
+    // 3. Crear el usuario en public.users
+    const { data: newUser, error: userError } = await supabase
+      .from('users')
       .insert({
-        user_id: userId,
-        first_name: nombre,
-        last_name: apellido,
-        email,
-        dni: dni || email,
-        employment_status: 'titular',
-        is_active: true
+        id: crypto.randomUUID(), // Nuevo ID único para este usuario
+        email: email,
+        nombre: nombre,
+        apellido: apellido,
+        rol: rol,
+        full_name: `${nombre} ${apellido}`,
+        auth_user_id: userId, // Referencia al usuario de autenticación
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .select()
       .single();
 
-    if (teacherError) {
-      console.error('Error al crear teacher:', teacherError);
-      throw teacherError;
+    if (userError) {
+      console.error('Error al crear usuario en public.users:', userError);
+      throw new Error(`Error al crear el usuario: ${userError.message}`);
     }
 
-    console.log('Teacher creado:', teacher.id, 'con user_id:', teacher.user_id);
-
-    // 3. Crear o actualizar entrada en usuarios_roles
+    // Crear entrada en usuarios_roles
     const { error: roleError } = await supabase
       .from('usuarios_roles')
-      .upsert(
-        {
-          user_id: userId,
-          rol: rol
-        },
-        { onConflict: 'user_id' }
-      );
+      .insert({
+        user_id: newUser.id,
+        rol: rol
+      });
 
     if (roleError) {
-      console.error('Error al actualizar rol:', roleError);
-    } else {
-      console.log('Rol asignado/actualizado:', rol, 'para user_id:', userId);
+      console.error('Error al crear rol:', roleError);
+      // Limpiar si falla la creación del rol
+      await supabase.from('users').delete().eq('id', newUser.id);
+      throw new Error(`Error al asignar el rol: ${roleError.message}`);
     }
 
+    // Registrar la creación del usuario en el historial
+    await registrarAccion({
+      idUsuario: req.user?.id_usuario,
+      accion: ACCIONES.CREAR_USUARIO,
+      tablaAfectada: TABLAS.USUARIOS,
+      idRegistroAfectado: newUser.id,
+      detalles: {
+        email: newUser.email,
+        nombre: newUser.nombre,
+        apellido: newUser.apellido,
+        rol: rol
+      }
+    });
+
+    // Devolver el usuario en el formato esperado por el frontend
     return res.json({
-      id: teacher.id,
-      nombre: teacher.first_name,
-      apellido: teacher.last_name,
-      email: teacher.email,
-      dni: teacher.dni,
-      rol: rol
+      id: newUser.id,
+      nombre: newUser.nombre,
+      apellido: newUser.apellido,
+      email: newUser.email,
+      dni: '',
+      rol: rol,
+      tipo: 'usuario'
     });
   } catch (e) {
     console.error('Error en POST /usuarios:', e);
@@ -172,48 +180,65 @@ router.post('/', authorize(['admin']), async (req, res) => {
 // Actualizar usuario (Solo admin)
 router.put('/:id', authorize(['admin']), async (req, res) => {
   const { id } = req.params;
-  const { nombre, apellido, email, rol, password, dni } = req.body || {};
+  const { nombre, apellido, email, rol, password } = req.body || {};
 
   try {
-    const { data: teacher } = await supabase
-      .from('teachers')
+    const { data: user } = await supabase
+      .from('users')
       .select('*')
       .eq('id', id)
       .single();
 
-    if (teacher) {
+    if (user) {
       const updateData = {};
-      if (nombre) updateData.first_name = nombre;
-      if (apellido) updateData.last_name = apellido;
+      if (nombre) updateData.nombre = nombre;
+      if (apellido) updateData.apellido = apellido;
       if (email) updateData.email = email;
-      if (dni) updateData.dni = dni;
-      if (password) updateData.contraseña = await bcrypt.hash(password, 10);
+      if (password) {
+        const salt = await bcrypt.genSalt(10);
+        updateData.contraseña = await bcrypt.hash(password, salt);
+      }
+      updateData.full_name = `${nombre || user.nombre} ${apellido || user.apellido}`;
 
       const { data: updated, error } = await supabase
-        .from('teachers')
+        .from('users')
         .update(updateData)
-        .eq('id', teacher.id)
+        .eq('id', id)
         .select()
         .single();
 
       if (error) throw error;
 
-      if (rol && teacher.user_id) {
+      if (rol) {
         await supabase
           .from('usuarios_roles')
           .upsert(
-            { user_id: teacher.user_id, rol: rol },
+            { user_id: id, rol: rol },
             { onConflict: 'user_id' }
           );
       }
 
+      // Registrar la actualización del usuario en el historial
+      await registrarAccion({
+        idUsuario: req.user?.id_usuario,
+        accion: ACCIONES.ACTUALIZAR_USUARIO,
+        tablaAfectada: TABLAS.USUARIOS,
+        idRegistroAfectado: id,
+        detalles: {
+          email: updated.email,
+          nombre: updated.nombre,
+          apellido: updated.apellido,
+          rol: rol || user.rol || 'profesor',
+          cambios: updateData
+        }
+      });
+
       return res.json({
         id: updated.id,
-        nombre: updated.first_name,
-        apellido: updated.last_name,
+        nombre: updated.nombre,
+        apellido: updated.apellido,
         email: updated.email,
-        dni: updated.dni,
-        rol: rol || 'teacher'
+        rol: rol || user.rol || 'profesor'
       });
     }
 
@@ -229,26 +254,39 @@ router.delete('/:id', authorize(['admin']), async (req, res) => {
   const { id } = req.params;
 
   try {
-    const { data: teacher } = await supabase
-      .from('teachers')
+    const { data: user } = await supabase
+      .from('users')
       .select('id')
       .eq('id', id)
       .single();
 
-    if (teacher) {
-      if (teacher.user_id) {
-        await supabase
-          .from('usuarios_roles')
-          .delete()
-          .eq('user_id', teacher.user_id);
-      }
-
-      const { error } = await supabase
-        .from('teachers')
+    if (user) {
+      // Eliminar entrada de usuarios_roles
+      await supabase
+        .from('usuarios_roles')
         .delete()
-        .eq('id', teacher.id);
+        .eq('user_id', id);
+
+      // Eliminar usuario de public.users
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', id);
 
       if (error) throw error;
+
+      // Registrar la eliminación del usuario en el historial
+      await registrarAccion({
+        idUsuario: req.user?.id_usuario,
+        accion: ACCIONES.ELIMINAR_USUARIO,
+        tablaAfectada: TABLAS.USUARIOS,
+        idRegistroAfectado: id,
+        detalles: {
+          email: user.email,
+          nombre: user.nombre,
+          apellido: user.apellido
+        }
+      });
 
       return res.json({ ok: true });
     }
@@ -257,6 +295,85 @@ router.delete('/:id', authorize(['admin']), async (req, res) => {
   } catch (e) {
     console.error('Error en DELETE /usuarios/:id:', e);
     return res.status(500).json({ message: 'Error al eliminar usuario' });
+  }
+});
+
+// Buscar profesores por nombre/apellido
+router.get('/profesores/search', authenticate, async (req, res) => {
+  const { busqueda } = req.query;
+
+  try {
+    if (!busqueda || busqueda.trim().length === 0) {
+      return res.json([]);
+    }
+
+    const searchTerm = `%${busqueda}%`;
+    
+    // Hacer dos queries: una por nombre y otra por apellido
+    const { data: porNombre } = await supabase
+      .from('users')
+      .select('id, email, nombre, apellido, rol')
+      .eq('rol', 'profesor')
+      .ilike('nombre', searchTerm);
+
+    const { data: porApellido } = await supabase
+      .from('users')
+      .select('id, email, nombre, apellido, rol')
+      .eq('rol', 'profesor')
+      .ilike('apellido', searchTerm);
+
+    // Combinar y eliminar duplicados
+    const combinados = [...(porNombre || []), ...(porApellido || [])];
+    const unicos = Array.from(new Map(combinados.map(u => [u.id, u])).values());
+
+    return res.json(unicos.map(u => ({
+      id_usuario: u.id,
+      nombre: u.nombre,
+      apellido: u.apellido,
+      email: u.email,
+      rol: u.rol
+    })));
+  } catch (e) {
+    console.error('Error en GET /usuarios/profesores/search:', e);
+    return res.status(500).json({ message: 'Error al buscar profesores' });
+  }
+});
+
+// Buscar alumnos por nombre/apellido
+router.get('/alumnos/search', authenticate, async (req, res) => {
+  const { busqueda } = req.query;
+
+  try {
+    if (!busqueda || busqueda.trim().length === 0) {
+      return res.json([]);
+    }
+
+    const searchTerm = `%${busqueda}%`;
+    
+    // Hacer dos queries: una por nombre y otra por apellido
+    const { data: porNombre } = await supabase
+      .from('alumno')
+      .select('id, nombre, apellido, dni')
+      .ilike('nombre', searchTerm);
+
+    const { data: porApellido } = await supabase
+      .from('alumno')
+      .select('id, nombre, apellido, dni')
+      .ilike('apellido', searchTerm);
+
+    // Combinar y eliminar duplicados
+    const combinados = [...(porNombre || []), ...(porApellido || [])];
+    const unicos = Array.from(new Map(combinados.map(a => [a.id, a])).values());
+
+    return res.json(unicos.map(a => ({
+      id_usuario: a.id,
+      nombre: a.nombre,
+      apellido: a.apellido,
+      dni: a.dni
+    })));
+  } catch (e) {
+    console.error('Error en GET /usuarios/alumnos/search:', e);
+    return res.status(500).json({ message: 'Error al buscar alumnos' });
   }
 });
 

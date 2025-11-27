@@ -38,7 +38,7 @@ export default function Informes() {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (busquedaProfesor.trim()) {
-        api.get('/usuarios/profesores', { params: { busqueda: busquedaProfesor } })
+        api.get('/usuarios/profesores/search', { params: { busqueda: busquedaProfesor } })
           .then(({ data }) => setProfesores(data))
           .catch(() => setProfesores([]))
       } else {
@@ -53,7 +53,7 @@ export default function Informes() {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (busquedaAlumno.trim()) {
-        api.get('/usuarios/alumnos', { params: { busqueda: busquedaAlumno } })
+        api.get('/usuarios/alumnos/search', { params: { busqueda: busquedaAlumno } })
           .then(({ data }) => setAlumnos(data))
           .catch(() => setAlumnos([]))
       } else {
@@ -391,7 +391,7 @@ export default function Informes() {
             )}
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-1.5">Materia</label>
-              <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors disabled:bg-gray-50 disabled:text-gray-500" value={materiaId} onChange={e => setMateriaId(e.target.value)} disabled={!cursoId && user.rol !== 'alumno'}>
+              <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors" value={materiaId} onChange={e => setMateriaId(e.target.value)}>
                 <option value="">Todas</option>
                 {materias.map(m => (<option key={m.id_materia} value={m.id_materia}>{m.nombre}</option>))}
               </select>

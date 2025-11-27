@@ -303,7 +303,10 @@ export default function Dashboard() {
                       <CalendarDays className="w-6 h-6 text-blue-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{event.descripcion}</p>
+                      <p className="font-medium text-gray-900 truncate">{event.titulo}</p>
+                      {event.descripcion && (
+                        <p className="text-sm text-gray-600 truncate">{event.descripcion}</p>
+                      )}
                       <p className="text-sm text-gray-600">{formatDate(event.fecha)}</p>
                       <p className="text-xs text-blue-600 font-medium">{event.curso_info}</p>
                     </div>

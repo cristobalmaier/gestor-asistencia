@@ -45,15 +45,11 @@ router.get('/', async (req, res) => {
 
     // Transformar al formato esperado
     const transformed = eventos.map(e => {
-      let desc = e.titulo;
-      if (e.descripcion && e.descripcion !== e.titulo) {
-        desc += ` - ${e.descripcion}`;
-      }
-
       return {
         id_evento: e.id,
         fecha: e.fecha_inicio.split('T')[0], // Extraer solo la fecha
-        descripcion: desc,
+        titulo: e.titulo,
+        descripcion: e.descripcion,
         id_curso: e.id_curso,
         curso_nombre: e.curso?.curso || null
       };
@@ -67,9 +63,10 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', authorize(['admin', 'preceptor']), async (req, res) => {
-  const { fecha, descripcion, cursoId } = req.body || {};
+  const { fecha, titulo, descripcion, cursoId } = req.body || {};
+  
   if (!fecha) return res.status(400).json({ message: 'fecha requerida' });
-
+  if (!titulo) return res.status(400).json({ message: 'titulo requerido' });
 
   try {
     // Convertir fecha a timestamp
@@ -78,7 +75,7 @@ router.post('/', authorize(['admin', 'preceptor']), async (req, res) => {
     const { data: evento, error } = await supabase
       .from('eventos')
       .insert({
-        titulo: descripcion || 'Evento',
+        titulo: titulo,
         descripcion: descripcion || null,
         fecha_inicio: fechaInicio,
         fecha_fin: null,

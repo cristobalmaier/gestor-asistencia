@@ -25,6 +25,11 @@ export default function Usuarios() {
     { value: 'padre', label: 'Padre' }
   ]
 
+  const getRoleLabel = (roleValue) => {
+    const role = roles.find(r => r.value === roleValue?.toLowerCase?.())
+    return role?.label || (roleValue?.charAt(0).toUpperCase() + roleValue?.slice(1).toLowerCase()) || 'Sin asignar'
+  }
+
   useEffect(() => {
     fetchUsuarios()
   }, [])
@@ -157,7 +162,7 @@ export default function Usuarios() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                    {roles.find(r => r.value === usuario.rol)?.label || usuario.rol}
+                    {getRoleLabel(usuario.rol)}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">

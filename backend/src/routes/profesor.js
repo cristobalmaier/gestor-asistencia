@@ -10,55 +10,65 @@ router.get('/mis-materias', async (req, res) => {
   }
   
   try {
-    // Buscar el teacher por user_id
-    const { data: teacher, error: teacherError } = await supabase
-      .from('teachers')
-      .select('id, first_name, last_name')
-      .or(`id.eq.${id_usuario},user_id.eq.${id_usuario}`)
+    // Buscar el usuario en public.users
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id, nombre, apellido')
+      .eq('id', id_usuario)
       .single();
     
-    if (teacherError || !teacher) {
+    if (userError || !user) {
       return res.json([]);
     }
     
-    // Buscar materias asignadas al profesor
-    // Opción 1: Usar teacher_subjects si está configurado
+    // Buscar materias por el nombre del profesor
+    // Si existe una relación en teacher_subjects, usar esa; si no, buscar por nombre de profesor
+    let materias = [];
+    
+    // Opción 1: Buscar en teacher_subjects si el usuario está vinculado como profesor
     const { data: teacherSubjects } = await supabase
       .from('teacher_subjects')
       .select('subject_id')
-      .eq('teacher_id', teacher.id);
+      .eq('teacher_id', id_usuario);
     
-    const subjectIds = teacherSubjects?.map(ts => ts.subject_id) || [];
-    
-    let materiasQuery = supabase
-      .from('materias')
-      .select(`
-        id,
-        nombre,
-        curso_id,
-        curso:curso(id, curso, turno)
-      `);
-    
-    if (subjectIds.length > 0) {
-      // Si hay teacher_subjects, usar esos
-      materiasQuery = materiasQuery.in('id', subjectIds);
+    if (teacherSubjects && teacherSubjects.length > 0) {
+      const subjectIds = teacherSubjects.map(ts => ts.subject_id);
+      const { data: subjects } = await supabase
+        .from('subjects')
+        .select(`
+          id,
+          name,
+          id_curso,
+          curso:curso(id, curso, turno)
+        `)
+        .in('id', subjectIds)
+        .order('name');
+      
+      materias = subjects || [];
     } else {
-      // Fallback: buscar por campo profesor (text)
-      materiasQuery = materiasQuery.eq('profesor', `${teacher.first_name} ${teacher.last_name}`);
+      // Opción 2: Fallback - buscar por campo profesor (text) en materias
+      const { data: materiasData } = await supabase
+        .from('materias')
+        .select(`
+          id,
+          nombre,
+          curso_id,
+          curso:curso(id, curso, turno)
+        `)
+        .eq('profesor', `${user.nombre} ${user.apellido}`)
+        .order('nombre');
+      
+      materias = materiasData || [];
     }
-    
-    const { data: materias, error } = await materiasQuery.order('nombre');
-    
-    if (error) throw error;
     
     // Transformar al formato esperado
     const transformed = materias.map(m => ({
       id_materia: m.id,
-      materia: m.nombre,
-      id_curso: m.curso_id,
+      materia: m.name || m.nombre,
+      id_curso: m.id_curso || m.curso_id,
       curso: m.curso?.curso || '',
-      anio: null, // No disponible en el nuevo esquema
-      division: null // No disponible en el nuevo esquema
+      anio: null,
+      division: null
     }));
     
     return res.json(transformed);
