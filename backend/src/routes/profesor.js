@@ -47,6 +47,9 @@ router.get('/mis-materias', async (req, res) => {
       materias = subjects || [];
     } else {
       // Opción 2: Fallback - buscar por campo profesor (text) en materias
+      // Limpiar espacios en blanco y buscar con ILIKE para ser más flexible
+      const nombreCompleto = `${user.nombre || ''} ${user.apellido || ''}`.trim().replace(/\s+/g, ' ');
+      
       const { data: materiasData } = await supabase
         .from('materias')
         .select(`
@@ -55,7 +58,7 @@ router.get('/mis-materias', async (req, res) => {
           curso_id,
           curso:curso(id, curso, turno)
         `)
-        .eq('profesor', `${user.nombre} ${user.apellido}`)
+        .ilike('profesor', `%${nombreCompleto}%`)
         .order('nombre');
       
       materias = materiasData || [];
