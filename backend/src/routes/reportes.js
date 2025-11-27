@@ -11,55 +11,69 @@ const router = Router();
 router.get('/curso', async (req, res) => {
   const { cursoId, desde, hasta, materiaId, profesorId, format: formatType } = req.query;
   if (!cursoId) return res.status(400).json({ message: 'cursoId requerido' });
-  
+
   try {
     // Obtener materias del curso
     let materiaQuery = supabase
       .from('materias')
       .select('id, curso_id, nombre')
       .order('curso_id', { ascending: true });
-    
+
     // Si no es 'todos', filtrar por el curso específico
     if (cursoId && cursoId !== 'todos') {
       materiaQuery = materiaQuery.eq('curso_id', cursoId);
     }
-    
+
     // Si hay un filtro de materia, aplicarlo
     if (materiaId && materiaId !== 'todos') {
       materiaQuery = materiaQuery.eq('id', materiaId);
     }
-    
+
     const { data: materias } = await materiaQuery;
     const materiaIds = materias?.map(m => m.id) || [];
-    
+
     if (materiaIds.length === 0) {
       return formatType ? res.status(404).json({ message: 'No hay datos' }) : res.json([]);
     }
-    
+
     // Obtener asistencias
     let asistQuery = supabase
       .from('asistencias')
       .select(`
         id_alumno,
+        id_materia,
         presente,
         justificada,
         tarde,
+        fecha,
         alumno!id_alumno(id, nombre, apellido, id_curso)
       `)
       .in('id_materia', materiaIds);
-    
+
     if (desde) asistQuery = asistQuery.gte('fecha', desde);
     if (hasta) asistQuery = asistQuery.lte('fecha', hasta);
-    
-    const { data: asistencias, error } = await asistQuery;
+
+    const { data: asistenciasRaw, error } = await asistQuery;
     if (error) throw error;
-    
+
+    // Deduplicate records based on alumno + materia + fecha
+    const asistencias = [];
+    const seen = new Set();
+
+    for (const a of asistenciasRaw) {
+      const key = `${a.id_alumno}-${a.id_materia}-${a.fecha}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        asistencias.push(a);
+      }
+    }
+
     // Agrupar por alumno
     const alumnosMap = new Map();
-    
+
     asistencias.forEach(a => {
       const alumnoId = a.id_alumno;
-      
+
       if (!alumnosMap.has(alumnoId)) {
         alumnosMap.set(alumnoId, {
           id_alumno: alumnoId,
@@ -73,10 +87,10 @@ router.get('/curso', async (req, res) => {
           total: 0
         });
       }
-      
+
       const alumno = alumnosMap.get(alumnoId);
       alumno.total++;
-      
+
       if (a.presente) {
         alumno.presentes++;
       } else if (a.tarde) {
@@ -87,23 +101,23 @@ router.get('/curso', async (req, res) => {
         alumno.ausentes++;
       }
     });
-    
+
     let rows = Array.from(alumnosMap.values())
       .sort((a, b) => {
         // Si estamos mostrando todos los cursos, ordenar primero por curso y luego por apellido
         if (cursoId === 'todos') {
-          return (a.curso || '').localeCompare(b.curso || '') || 
-                 a.apellido.localeCompare(b.apellido) || 
-                 a.nombre.localeCompare(b.nombre);
+          return (a.curso || '').localeCompare(b.curso || '') ||
+            a.apellido.localeCompare(b.apellido) ||
+            a.nombre.localeCompare(b.nombre);
         }
         return a.apellido.localeCompare(b.apellido) || a.nombre.localeCompare(b.nombre);
       });
-    
+
     if (formatType === 'csv') {
       const fields = ['id_alumno', 'apellido', 'nombre'];
       if (cursoId === 'todos') fields.push('curso');
       fields.push('presentes', 'ausentes', 'tardes', 'justificados', 'total');
-      
+
       const parser = new Parser({ fields });
       const csv = parser.parse(rows);
       res.setHeader('Content-Type', 'text/csv');
@@ -112,17 +126,17 @@ router.get('/curso', async (req, res) => {
     } else if (formatType === 'excel') {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Reporte');
-      
+
       const columns = [
         { header: 'Apellido', key: 'apellido', width: 20 },
         { header: 'Nombre', key: 'nombre', width: 20 }
       ];
-      
+
       // Agregar columna de curso solo si se seleccionaron todos los cursos
       if (cursoId === 'todos') {
         columns.push({ header: 'Curso', key: 'curso', width: 25 });
       }
-      
+
       // Agregar el resto de las columnas
       columns.push(
         { header: 'Presentes', key: 'presentes', width: 10 },
@@ -131,14 +145,14 @@ router.get('/curso', async (req, res) => {
         { header: 'Justificados', key: 'justificados', width: 12 },
         { header: 'Total', key: 'total', width: 10 }
       );
-      
+
       // Set the columns first
       worksheet.columns = columns;
-      
+
       // Then add the rows
       worksheet.addRows(rows);
       worksheet.getRow(1).font = { bold: true };
-      
+
       const buffer = await workbook.xlsx.writeBuffer();
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename=reporte_curso.xlsx');
@@ -152,7 +166,7 @@ router.get('/curso', async (req, res) => {
           bolditalics: 'Helvetica-BoldOblique'
         }
       };
-      
+
       const printer = new PdfPrinter(fonts);
       const docDefinition = {
         content: [
@@ -160,7 +174,7 @@ router.get('/curso', async (req, res) => {
           {
             table: {
               headerRows: 1,
-              widths: cursoId === 'todos' ? 
+              widths: cursoId === 'todos' ?
                 ['*', '*', '*', 'auto', 'auto', 'auto', 'auto', 'auto'] :
                 ['*', '*', 'auto', 'auto', 'auto', 'auto', 'auto'],
               body: [
@@ -177,12 +191,12 @@ router.get('/curso', async (req, res) => {
                     row.justificados.toString(),
                     row.total.toString()
                   ];
-                  
+
                   // Insertar el curso al principio si es necesario
                   if (cursoId === 'todos') {
                     baseRow.unshift(row.curso || 'Sin curso');
                   }
-                  
+
                   return baseRow;
                 })
               ]
@@ -200,12 +214,12 @@ router.get('/curso', async (req, res) => {
           font: 'Helvetica'
         }
       };
-      
+
       const pdfDoc = printer.createPdfKitDocument(docDefinition);
       let chunks = [];
-      
+
       pdfDoc.on('data', (chunk) => chunks.push(chunk));
-      
+
       return new Promise((resolve) => {
         pdfDoc.on('end', () => {
           const result = Buffer.concat(chunks);
@@ -228,7 +242,7 @@ router.get('/alumno', async (req, res) => {
   const { alumnoId, desde, hasta, materiaId, format: formatType } = req.query;
   const uid = alumnoId || req.user?.id_usuario;
   if (!uid) return res.status(400).json({ message: 'alumnoId requerido' });
-  
+
   try {
     let query = supabase
       .from('asistencias')
@@ -237,27 +251,45 @@ router.get('/alumno', async (req, res) => {
         presente,
         tarde,
         justificada,
-        materia:materias(id, nombre)
+        materia:materias(id, nombre, curso:curso(curso))
       `)
       .eq('id_alumno', uid);
-    
+
     if (desde) query = query.gte('fecha', desde);
     if (hasta) query = query.lte('fecha', hasta);
     if (materiaId) query = query.eq('id_materia', materiaId);
-    
+
     query = query.order('fecha', { ascending: false });
-    
+
     const { data: asistencias, error } = await query;
     if (error) throw error;
-    
-    const rows = asistencias.map(a => ({
-      fecha: a.fecha,
-      materia: a.materia?.nombre || '',
-      estado: a.presente ? 'Presente' : (a.tarde ? 'Tarde' : (a.justificada ? 'Justificado' : 'Ausente'))
-    }));
-    
+
+    // Deduplicate records based on fecha + materia
+    const uniqueAsistencias = [];
+    const seen = new Set();
+
+    for (const a of asistencias) {
+      const materiaId = a.materia?.id;
+      const key = `${a.fecha}-${materiaId}`;
+
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueAsistencias.push(a);
+      }
+    }
+
+    const rows = uniqueAsistencias.map(a => {
+      const cursoInfo = a.materia?.curso?.curso || '';
+
+      return {
+        fecha: a.fecha,
+        materia: a.materia?.nombre || '',
+        curso: cursoInfo,
+        estado: a.presente ? 'Presente' : (a.tarde ? 'Tarde' : (a.justificada ? 'Justificado' : 'Ausente'))
+      };
+    });
     if (formatType === 'csv') {
-      const parser = new Parser({ fields: ['fecha','materia','estado'] });
+      const parser = new Parser({ fields: ['fecha', 'materia', 'estado'] });
       const csv = parser.parse(rows);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="reporte_alumno.csv"');
@@ -265,20 +297,20 @@ router.get('/alumno', async (req, res) => {
     } else if (formatType === 'excel') {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Reporte');
-      
+
       worksheet.columns = [
         { header: 'Fecha', key: 'fecha', width: 15 },
         { header: 'Materia', key: 'materia', width: 40 },
         { header: 'Estado', key: 'estado', width: 15 }
       ];
-      
+
       worksheet.addRows(rows.map(row => ({
         ...row,
         fecha: format(new Date(row.fecha), 'dd/MM/yyyy', { locale: es })
       })));
-      
+
       worksheet.getRow(1).font = { bold: true };
-      
+
       const buffer = await workbook.xlsx.writeBuffer();
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename=reporte_alumno.xlsx');
@@ -292,7 +324,7 @@ router.get('/alumno', async (req, res) => {
           bolditalics: 'Helvetica-BoldOblique'
         }
       };
-      
+
       const printer = new PdfPrinter(fonts);
       const docDefinition = {
         content: [
@@ -323,12 +355,12 @@ router.get('/alumno', async (req, res) => {
           font: 'Helvetica'
         }
       };
-      
+
       const pdfDoc = printer.createPdfKitDocument(docDefinition);
       let chunks = [];
-      
+
       pdfDoc.on('data', (chunk) => chunks.push(chunk));
-      
+
       return new Promise((resolve) => {
         pdfDoc.on('end', () => {
           const result = Buffer.concat(chunks);
@@ -354,21 +386,21 @@ router.get('/dashboard', async (req, res) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const dateStr = thirtyDaysAgo.toISOString().split('T')[0];
-    
+
     // Get general attendance percentage
     const { data: asistencias, error: asistError } = await supabase
       .from('asistencias')
       .select('presente, justificada')
       .gte('fecha', dateStr);
-    
+
     if (asistError) throw asistError;
-    
+
     const total = asistencias.length;
     const presentes = asistencias.filter(a => a.presente).length;
     const ausentes = asistencias.filter(a => !a.presente && !a.justificada).length;
     const justificados = asistencias.filter(a => a.justificada).length;
     const porcentaje = total > 0 ? Math.round((presentes * 100.0 / total) * 100) / 100 : 0;
-    
+
     const attendanceStats = {
       total_asistencias: total,
       presentes,
@@ -377,7 +409,7 @@ router.get('/dashboard', async (req, res) => {
       justificados,
       porcentaje_asistencia: porcentaje
     };
-    
+
     // Get students with most absences in the last 30 days
     const { data: ausencias, error: ausError } = await supabase
       .from('asistencias')
@@ -388,9 +420,9 @@ router.get('/dashboard', async (req, res) => {
       .eq('presente', false)
       .eq('justificada', false)
       .gte('fecha', dateStr);
-    
+
     if (ausError) throw ausError;
-    
+
     // Agrupar por alumno
     const alumnosMap = new Map();
     ausencias.forEach(a => {
@@ -408,17 +440,17 @@ router.get('/dashboard', async (req, res) => {
       }
       alumnosMap.get(id).total_inasistencias++;
     });
-    
+
     const studentsWithMostAbsences = Array.from(alumnosMap.values())
       .sort((a, b) => b.total_inasistencias - a.total_inasistencias)
       .slice(0, 5);
-    
+
     // Get upcoming events (next 30 days)
     const today = new Date().toISOString().split('T')[0];
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
     const futureDateStr = thirtyDaysFromNow.toISOString().split('T')[0];
-    
+
     const { data: eventos, error: eventosError } = await supabase
       .from('eventos')
       .select(`
@@ -433,9 +465,9 @@ router.get('/dashboard', async (req, res) => {
       .lte('fecha_inicio', futureDateStr)
       .order('fecha_inicio', { ascending: true })
       .limit(10);
-    
+
     if (eventosError) throw eventosError;
-    
+
     const upcomingEvents = eventos.map(e => ({
       id_evento: e.id,
       fecha: e.fecha_inicio.split('T')[0],
@@ -444,7 +476,7 @@ router.get('/dashboard', async (req, res) => {
       id_curso: e.id_curso,
       curso_info: e.curso ? e.curso.curso : 'General'
     }));
-    
+
     res.json({
       attendanceStats,
       studentsWithMostAbsences,

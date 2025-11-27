@@ -22,7 +22,7 @@ export default function Informes() {
   const [busquedaProfesor, setBusquedaProfesor] = useState('')
   const [busquedaAlumno, setBusquedaAlumno] = useState('')
 
-  useEffect(() => { 
+  useEffect(() => {
     api.get('/cursos').then(({ data }) => setCursos(data))
   }, [])
 
@@ -94,30 +94,30 @@ export default function Informes() {
       // Leer el estado actual de alumnoId al inicio
       const alumnoIdActual = alumnoId
       console.log('Estado actual al inicio de cargar - alumnoId:', alumnoIdActual)
-      
+
       if (tab === 'curso') {
         if (!cursoId && cursoId !== 'todos') {
           toast.error('Seleccione un curso o "Todos los cursos" para continuar')
           setLoading(false)
           return
         }
-        const { data } = await api.get('/reportes/curso', { 
-          params: { 
-            cursoId, 
-            desde: desde || undefined, 
-            hasta: hasta || undefined, 
-            materiaId: materiaId || undefined, 
-            profesorId: profesorId || undefined 
-          } 
+        const { data } = await api.get('/reportes/curso', {
+          params: {
+            cursoId,
+            desde: desde || undefined,
+            hasta: hasta || undefined,
+            materiaId: materiaId || undefined,
+            profesorId: profesorId || undefined
+          }
         })
         setRows(data)
       } else {
         // Usar el valor leído al inicio de la función para evitar problemas de timing
         let alumnoIdFinal = alumnoIdActual || alumnoId
         console.log('Inicio cargar - alumnoIdActual:', alumnoIdActual, 'alumnoId (estado):', alumnoId, 'alumnoIdFinal:', alumnoIdFinal)
-        
+
         // Si no hay alumnoId pero hay texto de búsqueda, intentar encontrar el alumno
-        if (['padre','directivo','preceptor','profesor'].includes(user.rol) && !alumnoIdFinal && busquedaAlumno.trim()) {
+        if (['padre', 'directivo', 'preceptor', 'profesor'].includes(user.rol) && !alumnoIdFinal && busquedaAlumno.trim()) {
           // Primero, si hay alumnos ya cargados en el estado (del dropdown), usar esos
           if (alumnos && alumnos.length > 0) {
             // Si hay exactamente un resultado en el estado, usarlo
@@ -133,7 +133,7 @@ export default function Informes() {
                 const nombreCompleto = `${a.apellido}, ${a.nombre}`.toLowerCase()
                 return nombreCompleto === textoBusqueda
               })
-              
+
               if (matchExacto) {
                 alumnoIdFinal = matchExacto.id_usuario
                 setAlumnoId(alumnoIdFinal)
@@ -149,10 +149,10 @@ export default function Informes() {
           } else {
             // Si no hay alumnos en el estado, hacer una búsqueda nueva
             try {
-              const { data: alumnosEncontrados } = await api.get('/usuarios/alumnos/search', { 
-                params: { busqueda: busquedaAlumno.trim() } 
+              const { data: alumnosEncontrados } = await api.get('/usuarios/alumnos/search', {
+                params: { busqueda: busquedaAlumno.trim() }
               })
-              
+
               if (alumnosEncontrados && alumnosEncontrados.length > 0) {
                 // Si hay exactamente un resultado, usarlo automáticamente
                 if (alumnosEncontrados.length === 1) {
@@ -166,7 +166,7 @@ export default function Informes() {
                     const nombreCompleto = `${a.apellido}, ${a.nombre}`.toLowerCase()
                     return nombreCompleto === textoBusqueda
                   })
-                  
+
                   if (matchExacto) {
                     alumnoIdFinal = matchExacto.id_usuario
                     setAlumnoId(alumnoIdFinal)
@@ -191,16 +191,16 @@ export default function Informes() {
             }
           }
         }
-        
-        if (['padre','directivo','preceptor','profesor'].includes(user.rol) && !alumnoIdFinal) {
+
+        if (['padre', 'directivo', 'preceptor', 'profesor'].includes(user.rol) && !alumnoIdFinal) {
           toast.error('Seleccione un alumno para continuar')
           setLoading(false)
           return
         }
-        
+
         console.log('Antes de construir params - alumnoIdFinal:', alumnoIdFinal, 'tipo:', typeof alumnoIdFinal, 'valor truthy:', !!alumnoIdFinal)
         const params = { desde: desde || undefined, hasta: hasta || undefined, materiaId: materiaId || undefined }
-        
+
         // Agregar alumnoId si existe y el usuario no es alumno (los alumnos usan su propio ID del token)
         if (user.rol !== 'alumno') {
           if (alumnoIdFinal) {
@@ -210,7 +210,7 @@ export default function Informes() {
             console.log('NO se agrega alumnoId porque alumnoIdFinal es falsy:', alumnoIdFinal)
           }
         }
-        
+
         console.log('Buscando informe con params finales:', params)
         const { data } = await api.get('/reportes/alumno', { params })
         console.log('Datos recibidos:', data)
@@ -234,7 +234,7 @@ export default function Informes() {
       const params = new URLSearchParams()
       if (desde) params.set('desde', desde)
       if (hasta) params.set('hasta', hasta)
-      
+
       let url = ''
       if (tab === 'curso') {
         if (!cursoId) {
@@ -247,23 +247,23 @@ export default function Informes() {
         params.set('format', format)
         url = `${import.meta.env.VITE_API_URL || 'http://localhost:4000/api'}/reportes/curso?${params.toString()}`
       } else {
-        if (['padre','directivo','preceptor','profesor'].includes(user.rol) && alumnoId) params.set('alumnoId', alumnoId)
+        if (['padre', 'directivo', 'preceptor', 'profesor'].includes(user.rol) && alumnoId) params.set('alumnoId', alumnoId)
         if (materiaId) params.set('materiaId', materiaId)
         params.set('format', format)
         url = `${import.meta.env.VITE_API_URL || 'http://localhost:4000/api'}/reportes/alumno?${params.toString()}`
       }
-      
+
       // Usamos fetch para manejar mejor la respuesta
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       })
-      
+
       if (!response.ok) {
         throw new Error('Error al generar el reporte')
       }
-      
+
       // Creamos un enlace temporal para la descarga
       const blob = await response.blob()
       const downloadUrl = window.URL.createObjectURL(blob)
@@ -273,7 +273,7 @@ export default function Informes() {
       document.body.appendChild(link)
       link.click()
       link.remove()
-      
+
       // Mostrar notificación de éxito
       toast.success('Reporte generado correctamente', {
         position: 'top-right',
@@ -284,7 +284,7 @@ export default function Informes() {
         draggable: true,
         progress: undefined,
       })
-      
+
     } catch (error) {
       console.error('Error al descargar el reporte:', error)
       toast.error('Error al generar el reporte', {
@@ -319,24 +319,22 @@ export default function Informes() {
 
       <div className="flex gap-2 border-b border-gray-200">
         {user.rol !== 'alumno' && (
-          <button 
-            onClick={() => setTab('curso')} 
-            className={`px-4 py-3 font-semibold text-sm transition-colors border-b-2 ${
-              tab==='curso' 
-                ? 'border-primary-600 text-primary-600' 
+          <button
+            onClick={() => setTab('curso')}
+            className={`px-4 py-3 font-semibold text-sm transition-colors border-b-2 ${tab === 'curso'
+                ? 'border-primary-600 text-primary-600'
                 : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+              }`}
           >
             Por curso
           </button>
         )}
-        <button 
-          onClick={() => setTab('alumno')} 
-          className={`px-4 py-3 font-semibold text-sm transition-colors border-b-2 ${
-            tab==='alumno' 
-              ? 'border-primary-600 text-primary-600' 
+        <button
+          onClick={() => setTab('alumno')}
+          className={`px-4 py-3 font-semibold text-sm transition-colors border-b-2 ${tab === 'alumno'
+              ? 'border-primary-600 text-primary-600'
               : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
+            }`}
         >
           Por alumno
         </button>
@@ -349,7 +347,7 @@ export default function Informes() {
               <label className="block text-sm font-medium text-gray-900 mb-1.5">Curso</label>
               <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors" value={cursoId} onChange={e => setCursoId(e.target.value)}>
                 <option value="">Seleccionar</option>
-              <option value="todos">Todos los cursos</option>
+                <option value="todos">Todos los cursos</option>
                 {cursos.map(c => (<option key={c.id_curso} value={c.id_curso}>{c.nombre} {c.anio}°{c.division}</option>))}
               </select>
             </div>
@@ -362,10 +360,10 @@ export default function Informes() {
             </div>
             <div className="relative">
               <label className="block text-sm font-medium text-gray-900 mb-1.5">Profesor</label>
-              <input 
-                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors" 
-                placeholder="Buscar por nombre o apellido..." 
-                value={busquedaProfesor} 
+              <input
+                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors"
+                placeholder="Buscar por nombre o apellido..."
+                value={busquedaProfesor}
                 onChange={e => {
                   setBusquedaProfesor(e.target.value)
                   if (!e.target.value) setProfesorId('')
@@ -404,8 +402,8 @@ export default function Informes() {
             </div>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button 
-              onClick={cargar} 
+            <button
+              onClick={cargar}
               disabled={loading}
               className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors disabled:opacity-50"
             >
@@ -421,9 +419,9 @@ export default function Informes() {
               )}
               {loading ? 'Cargando...' : 'Buscar'}
             </button>
-            
-            <button 
-              onClick={() => descargarReporte('pdf')} 
+
+            <button
+              onClick={() => descargarReporte('pdf')}
               className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium bg-red-600 text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -431,9 +429,9 @@ export default function Informes() {
               </svg>
               PDF
             </button>
-            
-            <button 
-              onClick={() => descargarReporte('excel')} 
+
+            <button
+              onClick={() => descargarReporte('excel')}
               className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -441,9 +439,9 @@ export default function Informes() {
               </svg>
               Excel
             </button>
-            
-            <button 
-              onClick={() => descargarReporte('csv')} 
+
+            <button
+              onClick={() => descargarReporte('csv')}
               className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium bg-gray-600 text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -461,14 +459,14 @@ export default function Informes() {
             {user.rol !== 'alumno' && (
               <div className="relative">
                 <label className="block text-sm font-medium text-gray-900 mb-1.5">Alumno</label>
-                <input 
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors" 
-                  value={busquedaAlumno} 
+                <input
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors"
+                  value={busquedaAlumno}
                   onChange={e => {
                     setBusquedaAlumno(e.target.value)
                     if (!e.target.value) setAlumnoId('')
                   }}
-                  placeholder="Buscar por nombre o apellido..." 
+                  placeholder="Buscar por nombre o apellido..."
                 />
                 {alumnos.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
@@ -513,8 +511,8 @@ export default function Informes() {
             </div>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button 
-              onClick={cargar} 
+            <button
+              onClick={cargar}
               disabled={loading}
               className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors disabled:opacity-50"
             >
@@ -530,9 +528,9 @@ export default function Informes() {
               )}
               {loading ? 'Cargando...' : 'Buscar'}
             </button>
-            
-            <button 
-              onClick={() => descargarReporte('pdf')} 
+
+            <button
+              onClick={() => descargarReporte('pdf')}
               className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium bg-red-600 text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -540,9 +538,9 @@ export default function Informes() {
               </svg>
               PDF
             </button>
-            
-            <button 
-              onClick={() => descargarReporte('excel')} 
+
+            <button
+              onClick={() => descargarReporte('excel')}
               className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -550,9 +548,9 @@ export default function Informes() {
               </svg>
               Excel
             </button>
-            
-            <button 
-              onClick={() => descargarReporte('csv')} 
+
+            <button
+              onClick={() => descargarReporte('csv')}
               className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium bg-gray-600 text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -607,8 +605,16 @@ export default function Informes() {
                       <span className="font-medium text-gray-900">{new Date(r.fecha).toLocaleDateString('es-ES')}</span>
                     </td>
                     <td className="px-6 py-4 text-gray-600">{r.materia}</td>
-                    <td className="px-6 py-4"><span className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">{r.estado}</span></td>
-                    <td className="px-6 py-4 text-gray-600">{r.curso || 'Sin curso'}</td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border ${r.estado === 'Presente' ? 'bg-green-50 text-green-700 border-green-200' :
+                          r.estado === 'Ausente' ? 'bg-red-50 text-red-700 border-red-200' :
+                            r.estado === 'Tarde' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                              'bg-primary-50 text-primary-700 border-primary-200'
+                        }`}>
+                        {r.estado}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-gray-600">{r.curso || '-'}</td>
                   </>
                 )}
               </tr>
