@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { supabase, queryTable, insert, update as updateRecord, remove } from '../db.js';
-import { registrarAccion, ACCIONES, TABLAS } from '../utils/logger.js'; 
+import { registrarAccion, ACCIONES, TABLAS } from '../utils/logger.js';
 
 const router = Router();
 
@@ -111,13 +111,15 @@ router.get('/dia', async (req, res) => {
     // Obtener asistencias del día
     const { data: asistencias, error: asistError } = await supabase
       .from('asistencias')
-      .select('id_alumno, presente, tarde, justificada')
+      .select('id, id_alumno, presente, tarde, justificada')
       .eq('id_materia', materiaId)
       .eq('fecha', fecha);
 
     if (asistError) throw asistError;
 
     const asistMap = new Map();
+    let existingAttendanceId = null;
+
     asistencias.forEach(a => {
       let estado = 'Ausente';
       if (a.presente) {
@@ -127,15 +129,25 @@ router.get('/dia', async (req, res) => {
       } else if (a.justificada) {
         estado = 'Justificado';
       }
-      asistMap.set(a.id_alumno, estado);
+      asistMap.set(a.id_alumno, { estado, id: a.id });
+      if (!existingAttendanceId) existingAttendanceId = a.id;
     });
 
-    const data = alumnos.map(a => ({
-      id_alumno: a.id,
-      nombre: a.nombre,
-      apellido: a.apellido,
-      estado: asistMap.get(a.id) || null
-    }));
+    const data = alumnos.map(a => {
+      const asist = asistMap.get(a.id);
+      return {
+        id_alumno: a.id,
+        nombre: a.nombre,
+        apellido: a.apellido,
+        estado: asist?.estado || null,
+        asistencia_id: asist?.id || null
+      };
+    });
+
+    return res.json({
+      alumnos: data,
+      existingAttendance: existingAttendanceId ? { id: existingAttendanceId } : null
+    });
 
     return res.json({ alumnos: data });
   } catch (e) {
@@ -172,12 +184,12 @@ router.post('/pasar-lista', async (req, res) => {
         .eq('id', alumnoId)
         .eq('id_curso', cursoId)
         .single();
-      
+
       if (alumnoError || !alumno) {
-          // Si el alumno no existe o no pertenece al curso, simplemente lo ignoramos o lanzamos un error.
-          // Aquí optamos por ignorar y continuar. Si deseas fallar, usa 'throw alumnoError'.
-          console.warn(`Alumno ${alumnoId} no encontrado o no pertenece al curso ${cursoId}.`);
-          continue;
+        // Si el alumno no existe o no pertenece al curso, simplemente lo ignoramos o lanzamos un error.
+        // Aquí optamos por ignorar y continuar. Si deseas fallar, usa 'throw alumnoError'.
+        console.warn(`Alumno ${alumnoId} no encontrado o no pertenece al curso ${cursoId}.`);
+        continue;
       }
 
       // 2. Preparar el objeto de asistencia
@@ -208,7 +220,7 @@ router.post('/pasar-lista', async (req, res) => {
       if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116: No rows found
         throw fetchError;
       }
-      
+
       // 4. Decidir si actualizar o insertar (Upsert)
       if (existing) {
         // Log de la acción de actualización
@@ -249,7 +261,7 @@ router.post('/pasar-lista', async (req, res) => {
           .single();
 
         if (insertError) throw insertError;
-        
+
         // Log de la acción de creación
         await registrarAccion({
           idUsuario: createdBy,
@@ -312,10 +324,10 @@ router.put('/:id', async (req, res) => {
 
     // Preparar datos de actualización
     const updateData = {
-        presente: estado === 'Presente',
-        tarde: estado === 'Tarde', // Asumiendo que 'Tarde' puede ser un estado por sí solo
-        justificada: estado === 'Justificado',
-        // updated_at: new Date().toISOString() // Mejor dejar que la DB o el trigger lo maneje
+      presente: estado === 'Presente',
+      tarde: estado === 'Tarde', // Asumiendo que 'Tarde' puede ser un estado por sí solo
+      justificada: estado === 'Justificado',
+      // updated_at: new Date().toISOString() // Mejor dejar que la DB o el trigger lo maneje
     };
     if (observaciones !== undefined) updateData.observaciones = observaciones;
 

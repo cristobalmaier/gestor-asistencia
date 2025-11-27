@@ -120,7 +120,10 @@ export default function Dashboard() {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'No disponible'
-    const date = new Date(dateString)
+    // Parse YYYY-MM-DD directly to avoid timezone issues
+    const [year, month, day] = dateString.split('-').map(Number)
+    const date = new Date(year, month - 1, day)
+
     return date.toLocaleDateString('es-ES', {
       weekday: 'short',
       day: 'numeric',

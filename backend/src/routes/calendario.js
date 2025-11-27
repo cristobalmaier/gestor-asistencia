@@ -64,7 +64,7 @@ router.get('/', async (req, res) => {
 
 router.post('/', authorize(['admin', 'preceptor']), async (req, res) => {
   const { fecha, titulo, descripcion, cursoId } = req.body || {};
-  
+
   if (!fecha) return res.status(400).json({ message: 'fecha requerida' });
   if (!titulo) return res.status(400).json({ message: 'titulo requerido' });
 
@@ -95,9 +95,56 @@ router.post('/', authorize(['admin', 'preceptor']), async (req, res) => {
   }
 });
 
+router.put('/:id', authorize(['admin', 'preceptor']), async (req, res) => {
+  const { id } = req.params;
+  const { fecha, titulo, descripcion, cursoId } = req.body || {};
+
+  if (!titulo) return res.status(400).json({ message: 'titulo requerido' });
+
+  try {
+    // 1. Verify existence and permissions
+    const { data: existingEvent, error: fetchError } = await supabase
+      .from('eventos')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) throw fetchError;
+    if (!existingEvent) return res.status(404).json({ message: 'Evento no encontrado' });
+
+    if (existingEvent.created_by !== req.user.id_usuario && req.user.rol !== 'admin') {
+      return res.status(403).json({ message: 'No tienes permiso para editar este evento' });
+    }
+
+    // 2. Prepare update data
+    const updates = {
+      titulo,
+      descripcion: descripcion || null,
+      id_curso: cursoId || null
+    };
+
+    if (fecha) {
+      updates.fecha_inicio = new Date(fecha).toISOString();
+    }
+
+    // 3. Update
+    const { error: updateError } = await supabase
+      .from('eventos')
+      .update(updates)
+      .eq('id', id);
+
+    if (updateError) throw updateError;
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('Error en PUT /calendario/:id:', e);
+    return res.status(500).json({ message: 'Error al actualizar el evento' });
+  }
+});
+
 router.delete('/:id', authorize(['admin', 'preceptor']), async (req, res) => {
   const { id } = req.params;
-  
+
   try {
     // Primero verificamos si el evento existe
     const { data: evento, error: fetchError } = await supabase

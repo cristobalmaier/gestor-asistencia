@@ -9,7 +9,7 @@ import { Fragment } from 'react'
 
 export default function Calendario() {
   const { user } = useAuth()
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0,10))
+  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [cursos, setCursos] = useState([])
   const [cursoId, setCursoId] = useState('')
   const [eventos, setEventos] = useState([])
@@ -65,7 +65,8 @@ export default function Calendario() {
       await api.put(`/calendario/${editingEvent.id_evento}`, {
         titulo: editingEvent.titulo,
         descripcion: editingEvent.descripcion || null,
-        cursoId: cursoId || null
+        cursoId: editingEvent.id_curso || null,
+        fecha: editingEvent.fecha
       })
       setIsEditModalOpen(false)
       await cargar()
@@ -82,7 +83,7 @@ export default function Calendario() {
 
   const confirmarEliminacion = async () => {
     if (!deletingEventId) return;
-    
+
     try {
       await api.delete(`/calendario/${deletingEventId}`);
       await cargar();
@@ -118,7 +119,7 @@ export default function Calendario() {
         </div>
       </div>
 
-      {['preceptor','admin'].includes(user.rol) && (
+      {['preceptor', 'admin'].includes(user.rol) && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h3 className="font-semibold text-gray-900 mb-4">Crear nuevo evento</h3>
           <div className="grid md:grid-cols-5 gap-4 items-end">
@@ -178,7 +179,12 @@ export default function Calendario() {
             {eventos.map(ev => (
               <tr key={ev.id_evento} className="transition-colors duration-100 hover:bg-gray-50 border-b border-gray-100 last:border-0">
                 <td className="px-6 py-4">
-                  <span className="font-medium text-gray-900">{new Date(ev.fecha).toLocaleDateString('es-ES')}</span>
+                  <span className="font-medium text-gray-900">
+                    {(() => {
+                      const [year, month, day] = ev.fecha.split('-').map(Number)
+                      return new Date(year, month - 1, day).toLocaleDateString('es-ES')
+                    })()}
+                  </span>
                 </td>
                 <td className="px-6 py-4">
                   <span className="text-gray-600">{ev.curso_nombre || 'Todos'}</span>
@@ -244,6 +250,42 @@ export default function Calendario() {
                     Editar Evento
                   </Dialog.Title>
                   <div className="mt-4 space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Fecha *
+                      </label>
+                      <input
+                        type="date"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        value={editingEvent?.fecha || ''}
+                        onChange={(e) =>
+                          setEditingEvent({
+                            ...editingEvent,
+                            fecha: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Curso (opcional)
+                      </label>
+                      <select
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        value={editingEvent?.id_curso || ''}
+                        onChange={(e) =>
+                          setEditingEvent({
+                            ...editingEvent,
+                            id_curso: e.target.value || null,
+                          })
+                        }
+                      >
+                        <option value="">Todos los cursos</option>
+                        {cursos.map(c => (
+                          <option key={c.id_curso} value={c.id_curso}>{c.nombre} {c.anio}°{c.division}</option>
+                        ))}
+                      </select>
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Nombre del evento *
