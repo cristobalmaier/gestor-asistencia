@@ -19,6 +19,7 @@ export default function PasarLista() {
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [existingAttendanceId, setExistingAttendanceId] = useState(null)
+  const [estadoMasivo, setEstadoMasivo] = useState(ESTADOS[0])
   const isProfesor = user.rol === 'profesor'
 
   useEffect(() => {
@@ -91,6 +92,11 @@ export default function PasarLista() {
       setExistingAttendanceId(null)
       setIsEditing(false)
     }
+  }
+
+  const aplicarEstadoATodos = (estado) => {
+    if (!estado) return
+    setAlumnos(prev => prev.map(a => ({ ...a, estado })))
   }
 
   const guardar = async () => {
@@ -229,14 +235,37 @@ export default function PasarLista() {
             <h3 className="text-lg font-medium text-gray-900">
               {isEditing ? 'Editando Asistencia' : 'Vista de Asistencia'}
             </h3>
-            {!isEditing && (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Editar
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {isEditing && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-gray-700">Aplicar a todos:</label>
+                  <select
+                    className="border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                    value={estadoMasivo}
+                    onChange={e => setEstadoMasivo(e.target.value)}
+                  >
+                    {ESTADOS.map(e => (
+                      <option key={e} value={e}>{e}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => aplicarEstadoATodos(estadoMasivo)}
+                    className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary-500"
+                  >
+                    Aplicar a todos
+                  </button>
+                </div>
+              )}
+              {!isEditing && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  Editar
+                </button>
+              )}
+            </div>
           </div>
           <table className="min-w-full">
             <thead className="bg-gray-50 text-gray-600 text-xs font-medium uppercase tracking-wide">

@@ -68,7 +68,7 @@ router.get('/curso', async (req, res) => {
       }
     }
 
-    // Agrupar por alumno
+    // Agrupar por alumno y calcular totales
     const alumnosMap = new Map();
 
     asistencias.forEach(a => {
@@ -84,7 +84,8 @@ router.get('/curso', async (req, res) => {
           ausentes: 0,
           tardes: 0,
           justificados: 0,
-          total: 0
+          total: 0,
+          porcentaje: 0
         });
       }
 
@@ -100,6 +101,13 @@ router.get('/curso', async (req, res) => {
       } else {
         alumno.ausentes++;
       }
+    });
+
+    // Calcular porcentaje de asistencia por alumno (presentes / total * 100)
+    alumnosMap.forEach(alumno => {
+      alumno.porcentaje = alumno.total > 0
+        ? Math.round((alumno.presentes * 1000) / alumno.total) / 10 // un decimal
+        : 0;
     });
 
     let rows = Array.from(alumnosMap.values())
@@ -127,6 +135,11 @@ router.get('/curso', async (req, res) => {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Reporte');
 
+      // Estilos base
+      const primaryColor = 'FF2563EB'; // Azul 600
+      const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: primaryColor } };
+      const headerFont = { bold: true, color: { argb: 'FFFFFFFF' } };
+
       const columns = [
         { header: 'Apellido', key: 'apellido', width: 20 },
         { header: 'Nombre', key: 'nombre', width: 20 }
@@ -143,15 +156,35 @@ router.get('/curso', async (req, res) => {
         { header: 'Ausentes', key: 'ausentes', width: 10 },
         { header: 'Tardes', key: 'tardes', width: 10 },
         { header: 'Justificados', key: 'justificados', width: 12 },
-        { header: 'Total', key: 'total', width: 10 }
+        { header: 'Total', key: 'total', width: 10 },
+        { header: '% Asistencia', key: 'porcentaje', width: 13 }
       );
 
       // Set the columns first
       worksheet.columns = columns;
 
       // Then add the rows
-      worksheet.addRows(rows);
-      worksheet.getRow(1).font = { bold: true };
+      // Añadir filas y formatear porcentaje como valor numérico con un decimal
+      rows.forEach((row, index) => {
+        const excelRow = worksheet.addRow(row);
+        const porcentajeCell = excelRow.getCell('porcentaje');
+        porcentajeCell.value = row.porcentaje / 100; // Excel espera 0-1 para formato %
+        porcentajeCell.numFmt = '0.0%';
+
+        // Rayado suave por filas para mejor lectura
+        if (index % 2 === 0) {
+          excelRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } }; // gris muy claro
+        }
+      });
+
+      // Estilos de encabezado
+      const headerRow = worksheet.getRow(1);
+      headerRow.eachCell(cell => {
+        cell.fill = headerFill;
+        cell.font = headerFont;
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+      headerRow.height = 20;
 
       const buffer = await workbook.xlsx.writeBuffer();
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -170,18 +203,37 @@ router.get('/curso', async (req, res) => {
       const printer = new PdfPrinter(fonts);
       const docDefinition = {
         content: [
-          { text: 'Reporte de Asistencia' + (cursoId === 'todos' ? ' - Todos los Cursos' : ''), style: 'header' },
+          { text: 'Reporte de Asistencia por Curso', style: 'header' },
           {
             table: {
               headerRows: 1,
               widths: cursoId === 'todos' ?
-                ['*', '*', '*', 'auto', 'auto', 'auto', 'auto', 'auto'] :
-                ['*', '*', 'auto', 'auto', 'auto', 'auto', 'auto'],
+                ['*', '*', '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'] :
+                ['*', '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
               body: [
                 cursoId === 'todos' ?
-                  ['Curso', 'Apellido', 'Nombre', 'Presentes', 'Ausentes', 'Tardes', 'Justificados', 'Total'] :
-                  ['Apellido', 'Nombre', 'Presentes', 'Ausentes', 'Tardes', 'Justificados', 'Total'],
-                ...rows.map(row => {
+                  [
+                    { text: 'Curso', style: 'tableHeader' },
+                    { text: 'Apellido', style: 'tableHeader' },
+                    { text: 'Nombre', style: 'tableHeader' },
+                    { text: 'Presentes', style: 'tableHeader' },
+                    { text: 'Ausentes', style: 'tableHeader' },
+                    { text: 'Tardes', style: 'tableHeader' },
+                    { text: 'Justificados', style: 'tableHeader' },
+                    { text: 'Total', style: 'tableHeader' },
+                    { text: '% Asistencia', style: 'tableHeader' }
+                  ] :
+                  [
+                    { text: 'Apellido', style: 'tableHeader' },
+                    { text: 'Nombre', style: 'tableHeader' },
+                    { text: 'Presentes', style: 'tableHeader' },
+                    { text: 'Ausentes', style: 'tableHeader' },
+                    { text: 'Tardes', style: 'tableHeader' },
+                    { text: 'Justificados', style: 'tableHeader' },
+                    { text: 'Total', style: 'tableHeader' },
+                    { text: '% Asistencia', style: 'tableHeader' }
+                  ],
+                ...rows.map((row, index) => {
                   const baseRow = [
                     row.apellido,
                     row.nombre,
@@ -189,7 +241,8 @@ router.get('/curso', async (req, res) => {
                     row.ausentes.toString(),
                     row.tardes.toString(),
                     row.justificados.toString(),
-                    row.total.toString()
+                    row.total.toString(),
+                    `${row.porcentaje.toFixed(1)}%`
                   ];
 
                   // Insertar el curso al principio si es necesario
@@ -200,18 +253,36 @@ router.get('/curso', async (req, res) => {
                   return baseRow;
                 })
               ]
-            }
+            },
+            layout: {
+              fillColor: function (rowIndex) {
+                if (rowIndex === 0) return '#2563EB'; // encabezado azul
+                return rowIndex % 2 === 0 ? '#F9FAFB' : null; // rayado suave
+              },
+              hLineWidth: function () { return 0.5; },
+              vLineWidth: function () { return 0.5; },
+              hLineColor: function () { return '#E5E7EB'; },
+              vLineColor: function () { return '#E5E7EB'; }
+            },
+            margin: [0, 10, 0, 0]
           }
         ],
         styles: {
           header: {
-            fontSize: 18,
+            fontSize: 20,
             bold: true,
+            color: '#1F2933',
             margin: [0, 0, 0, 10]
+          },
+          tableHeader: {
+            bold: true,
+            color: 'white',
+            alignment: 'center'
           }
         },
         defaultStyle: {
-          font: 'Helvetica'
+          font: 'Helvetica',
+          fontSize: 10
         }
       };
 
@@ -288,6 +359,7 @@ router.get('/alumno', async (req, res) => {
         estado: a.presente ? 'Presente' : (a.tarde ? 'Tarde' : (a.justificada ? 'Justificado' : 'Ausente'))
       };
     });
+
     // Calcular estadísticas
     const total = rows.length;
     const presentes = rows.filter(r => r.estado === 'Presente').length;
@@ -295,6 +367,19 @@ router.get('/alumno', async (req, res) => {
     const tardes = rows.filter(r => r.estado === 'Tarde').length;
     const justificados = rows.filter(r => r.estado === 'Justificado').length;
     const porcentajeAsistencia = total > 0 ? ((presentes / total) * 100).toFixed(1) : '0.0';
+
+    // Obtener datos básicos del alumno para usar en los reportes agregados
+    const { data: alumnoInfo, error: alumnoError } = await supabase
+      .from('alumno')
+      .select('nombre, apellido, curso:curso(curso)')
+      .eq('id', uid)
+      .single();
+
+    if (alumnoError) throw alumnoError;
+
+    const apellido = alumnoInfo?.apellido || '';
+    const nombre = alumnoInfo?.nombre || '';
+    const cursoNombre = alumnoInfo?.curso?.curso || '';
 
 
     if (formatType === 'csv') {
@@ -307,68 +392,56 @@ router.get('/alumno', async (req, res) => {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Reporte');
 
-      // Estilos - Paleta Azul
-      const primaryColor = 'FF2563EB'; // Blue 600
-      const headerStyle = {
-        font: { bold: true, color: { argb: 'FFFFFFFF' } },
-        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: primaryColor } },
-        alignment: { horizontal: 'center' }
-      };
+      const primaryColor = 'FF2563EB'; // Azul 600
+      const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: primaryColor } };
+      const headerFont = { bold: true, color: { argb: 'FFFFFFFF' } };
 
-      // Sección de Resumen
-      worksheet.mergeCells('A1:D1');
-      const titleCell = worksheet.getCell('A1');
-      titleCell.value = 'Resumen de Asistencia';
-      titleCell.font = { bold: true, size: 16, color: { argb: primaryColor } };
-      titleCell.alignment = { horizontal: 'center' };
-
-      // Tabla de Resumen
-      worksheet.addRow(['Categoría', 'Cantidad', 'Porcentaje']);
-      const summaryHeaderRow = worksheet.lastRow;
-      summaryHeaderRow.getCell(1).font = { bold: true };
-      summaryHeaderRow.getCell(2).font = { bold: true };
-      summaryHeaderRow.getCell(3).font = { bold: true };
-
-      worksheet.addRow(['Presentes', presentes, total > 0 ? presentes / total : 0]);
-      worksheet.addRow(['Ausentes', ausentes, total > 0 ? ausentes / total : 0]);
-      worksheet.addRow(['Justificados', justificados, total > 0 ? justificados / total : 0]);
-
-      worksheet.addRow([]); // Espacio vacío
-      worksheet.addRow(['Total de Clases:', total]);
-      worksheet.getCell('A6').font = { bold: true };
-
-      // Formato de porcentaje
-      worksheet.getColumn(3).numFmt = '0.0%';
-
-      worksheet.addRow([]); // Espacio vacío
-      worksheet.addRow([]); // Espacio vacío
-
-      // Tabla de Detalle
-      worksheet.addRow(['Fecha', 'Materia', 'Curso', 'Estado']);
-      const headerRow = worksheet.lastRow;
-      headerRow.eachCell((cell) => {
-        cell.style = headerStyle;
-      });
-
+      // Definir columnas igual que en /reportes/curso, pero para un solo alumno
       worksheet.columns = [
-        { key: 'fecha', width: 15 },
-        { key: 'materia', width: 30 },
-        { key: 'curso', width: 20 },
-        { key: 'estado', width: 15 }
+        { header: 'Apellido', key: 'apellido', width: 20 },
+        { header: 'Nombre', key: 'nombre', width: 20 },
+        { header: 'Curso', key: 'curso', width: 25 },
+        { header: 'Presentes', key: 'presentes', width: 10 },
+        { header: 'Ausentes', key: 'ausentes', width: 10 },
+        { header: 'Tardes', key: 'tardes', width: 10 },
+        { header: 'Justificados', key: 'justificados', width: 12 },
+        { header: 'Total', key: 'total', width: 10 }
       ];
 
-      rows.forEach(row => {
-        const r = worksheet.addRow({
-          ...row,
-          fecha: format(new Date(row.fecha), 'dd/MM/yyyy', { locale: es })
-        });
+      // Fila de datos agregados para el alumno
+      const resumenRow = {
+        apellido,
+        nombre,
+        curso: cursoNombre,
+        presentes,
+        ausentes,
+        tardes,
+        justificados,
+        total
+      };
 
-        // Colorear estado
-        const estadoCell = r.getCell(4);
-        if (row.estado === 'Ausente') estadoCell.font = { color: { argb: 'FFFF0000' } }; // Rojo
-        else if (row.estado === 'Presente') estadoCell.font = { color: { argb: 'FF166534' } }; // Verde oscuro
-        else if (row.estado === 'Justificado') estadoCell.font = { color: { argb: 'FFCA8A04' } }; // Amarillo oscuro
+      worksheet.addRow(resumenRow);
+
+      // Estilos de encabezado
+      const headerRow = worksheet.getRow(1);
+      headerRow.eachCell(cell => {
+        cell.fill = headerFill;
+        cell.font = headerFont;
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
       });
+
+      // Resaltar fila de datos
+      const dataRow = worksheet.getRow(2);
+      dataRow.font = { bold: true };
+
+      // Fila con porcentaje de asistencia
+      worksheet.addRow([]);
+      worksheet.addRow([
+        'Porcentaje de asistencia',
+        `${porcentajeAsistencia}%`
+      ]);
+      const porcentajeRow = worksheet.lastRow;
+      porcentajeRow.getCell(1).font = { bold: true };
 
       const buffer = await workbook.xlsx.writeBuffer();
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -383,92 +456,70 @@ router.get('/alumno', async (req, res) => {
           bolditalics: 'Helvetica-BoldOblique'
         }
       };
-
       const printer = new PdfPrinter(fonts);
       const docDefinition = {
         content: [
           { text: 'Reporte de Asistencia del Alumno', style: 'header' },
-
-          // Sección de Resumen
-          { text: 'Resumen General', style: 'subheader' },
-          {
-            table: {
-              widths: ['*', '*', '*', '*', '*'],
-              body: [
-                [
-                  { text: 'Total Clases', style: 'tableHeader' },
-                  { text: 'Presentes', style: 'tableHeader' },
-                  { text: 'Ausentes', style: 'tableHeader' },
-                  { text: 'Justificados', style: 'tableHeader' },
-                  { text: 'Porcentaje', style: 'tableHeader' }
-                ],
-                [
-                  total.toString(),
-                  presentes.toString(),
-                  ausentes.toString(),
-                  justificados.toString(),
-                  { text: `${porcentajeAsistencia}%`, bold: true }
-                ]
-              ]
-            },
-            layout: 'lightHorizontalLines',
-            margin: [0, 0, 0, 20]
-          },
-
-          // Tabla de Detalle
-          { text: 'Detalle de Asistencias', style: 'subheader' },
           {
             table: {
               headerRows: 1,
-              widths: ['auto', '*', 'auto', 'auto'],
+              widths: ['*', '*', '*', 'auto', 'auto', 'auto', 'auto', 'auto'],
               body: [
                 [
-                  { text: 'Fecha', style: 'tableHeader' },
-                  { text: 'Materia', style: 'tableHeader' },
+                  { text: 'Apellido', style: 'tableHeader' },
+                  { text: 'Nombre', style: 'tableHeader' },
                   { text: 'Curso', style: 'tableHeader' },
-                  { text: 'Estado', style: 'tableHeader' }
+                  { text: 'Presentes', style: 'tableHeader' },
+                  { text: 'Ausentes', style: 'tableHeader' },
+                  { text: 'Tardes', style: 'tableHeader' },
+                  { text: 'Justificados', style: 'tableHeader' },
+                  { text: 'Total', style: 'tableHeader' }
                 ],
-                ...rows.map(row => [
-                  format(new Date(row.fecha), 'dd/MM/yyyy', { locale: es }),
-                  row.materia,
-                  row.curso,
-                  {
-                    text: row.estado,
-                    color: row.estado === 'Ausente' ? 'red' : (row.estado === 'Presente' ? 'green' : 'black')
-                  }
-                ])
+                [
+                  apellido,
+                  nombre,
+                  cursoNombre || 'Sin curso',
+                  presentes.toString(),
+                  ausentes.toString(),
+                  tardes.toString(),
+                  justificados.toString(),
+                  total.toString()
+                ]
               ]
             },
             layout: {
-              fillColor: function (rowIndex, node, columnIndex) {
-                return (rowIndex === 0) ? '#2563EB' : (rowIndex % 2 === 0) ? '#EFF6FF' : null; // Blue 600 & Blue 50
-              }
-            }
+              fillColor: function (rowIndex) {
+                return rowIndex === 0 ? '#2563EB' : '#F9FAFB';
+              },
+              hLineWidth: function () { return 0.5; },
+              vLineWidth: function () { return 0.5; },
+              hLineColor: function () { return '#E5E7EB'; },
+              vLineColor: function () { return '#E5E7EB'; }
+            },
+            margin: [0, 10, 0, 20]
+          },
+          {
+            text: `Porcentaje de asistencia: ${porcentajeAsistencia}%`,
+            margin: [0, 0, 0, 10],
+            bold: true
           }
         ],
         styles: {
           header: {
-            fontSize: 22,
+            fontSize: 20,
             bold: true,
-            color: '#1E40AF', // Blue 800
+            color: '#1F2933',
             margin: [0, 0, 0, 10]
-          },
-          subheader: {
-            fontSize: 16,
-            bold: true,
-            color: '#1E40AF', // Blue 800
-            margin: [0, 10, 0, 5]
           },
           tableHeader: {
             bold: true,
-            fontSize: 12,
             color: 'white',
-            fillColor: '#2563EB', // Blue 600
             alignment: 'center'
           }
         },
         defaultStyle: {
-          font: 'Helvetica'
+          font: 'Helvetica',
+          fontSize: 10
         }
       };
 

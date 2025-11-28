@@ -149,33 +149,6 @@ export default function Historial() {
             <div className="text-xs text-gray-500 mt-1">
               Total alumnos: {datos.resumen?.total || 0}
             </div>
-            <div className="text-sm text-gray-600 mt-2">
-              <details className="cursor-pointer group">
-                <summary className="font-medium text-blue-600 hover:text-blue-800 text-xs list-none flex items-center gap-1">
-                  <span className="group-open:hidden">▶ Ver más info</span>
-                  <span className="hidden group-open:inline">▼ Ocultar info</span>
-                </summary>
-                <div className="mt-2 bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs">
-                  <div className="grid grid-cols-1 gap-2">
-                    {Object.entries(datos)
-                      .filter(([key]) => !['tipo', 'alumno_nombre', 'materia_nombre'].includes(key))
-                      .map(([key, value]) => (
-                        <div key={key} className="flex flex-col sm:flex-row sm:gap-2 border-b border-gray-100 last:border-0 pb-1 last:pb-0 items-start">
-                          <span className="font-semibold text-gray-600 capitalize min-w-[100px]">{key.replace(/_/g, ' ')}:</span>
-                          <span className="text-gray-800 break-all whitespace-pre-wrap flex-1">{renderValue(value)}</span>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              </details>
-            </div>
-          </div>
-        )
-
-      case 'INICIO_SESION':
-        return (
-          <div className="text-sm">
-            <span className="font-medium text-gray-700">Usuario autenticado correctamente</span>
           </div>
         )
 
