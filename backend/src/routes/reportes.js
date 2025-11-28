@@ -110,6 +110,27 @@ router.get('/curso', async (req, res) => {
         : 0;
     });
 
+    // Calcular resumen general del curso
+    let totalAlumnos = 0;
+    let totalClases = 0;
+    let totalPresentes = 0;
+    let totalAusentes = 0;
+    let totalTardes = 0;
+    let totalJustificados = 0;
+
+    alumnosMap.forEach(alumno => {
+      totalAlumnos += 1;
+      totalClases += alumno.total;
+      totalPresentes += alumno.presentes;
+      totalAusentes += alumno.ausentes;
+      totalTardes += alumno.tardes;
+      totalJustificados += alumno.justificados;
+    });
+
+    const promedioAsistenciaCurso = totalClases > 0
+      ? Math.round((totalPresentes * 1000) / totalClases) / 10
+      : 0;
+
     let rows = Array.from(alumnosMap.values())
       .sort((a, b) => {
         // Si estamos mostrando todos los cursos, ordenar primero por curso y luego por apellido
@@ -186,6 +207,23 @@ router.get('/curso', async (req, res) => {
       });
       headerRow.height = 20;
 
+      // Bloque de resumen general al final
+      worksheet.addRow([]);
+      worksheet.addRow(['Resumen general']);
+      const resumenTitleRow = worksheet.lastRow;
+      resumenTitleRow.getCell(1).font = { bold: true };
+
+      worksheet.addRow(['Total de alumnos', totalAlumnos]);
+      worksheet.addRow(['Total de clases (todas las filas de asistencia)', totalClases]);
+      worksheet.addRow(['Presentes', totalPresentes]);
+      worksheet.addRow(['Ausentes', totalAusentes]);
+      worksheet.addRow(['Tardes', totalTardes]);
+      worksheet.addRow(['Justificados', totalJustificados]);
+      worksheet.addRow([
+        'Porcentaje promedio de asistencia del curso',
+        `${promedioAsistenciaCurso.toFixed(1)}%`
+      ]);
+
       const buffer = await workbook.xlsx.writeBuffer();
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename=reporte_curso.xlsx');
@@ -204,6 +242,27 @@ router.get('/curso', async (req, res) => {
       const docDefinition = {
         content: [
           { text: 'Reporte de Asistencia por Curso', style: 'header' },
+          {
+            text: `Resumen general` + (cursoId === 'todos' ? '' : ''),
+            style: 'subheader',
+            margin: [0, 0, 0, 4]
+          },
+          {
+            table: {
+              widths: ['*', 'auto'],
+              body: [
+                ['Total de alumnos', totalAlumnos.toString()],
+                ['Total de clases (todas las filas de asistencia)', totalClases.toString()],
+                ['Presentes', totalPresentes.toString()],
+                ['Ausentes', totalAusentes.toString()],
+                ['Tardes', totalTardes.toString()],
+                ['Justificados', totalJustificados.toString()],
+                ['Porcentaje promedio de asistencia del curso', `${promedioAsistenciaCurso.toFixed(1)}%`]
+              ]
+            },
+            layout: 'lightHorizontalLines',
+            margin: [0, 0, 0, 10]
+          },
           {
             table: {
               headerRows: 1,
@@ -273,6 +332,11 @@ router.get('/curso', async (req, res) => {
             bold: true,
             color: '#1F2933',
             margin: [0, 0, 0, 10]
+          },
+          subheader: {
+            fontSize: 12,
+            bold: true,
+            margin: [0, 8, 0, 4]
           },
           tableHeader: {
             bold: true,
