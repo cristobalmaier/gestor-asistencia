@@ -213,7 +213,14 @@ router.get('/profesores/search', async (req, res) => {
       .eq('rol', 'profesor')
       .or(`nombre.ilike.${term},apellido.ilike.${term}`);
 
-    return res.json(data || []);
+    const mapped = (data || []).map(u => ({
+      id_usuario: u.id,
+      nombre: u.nombre,
+      apellido: u.apellido,
+      email: u.email,
+      rol: u.rol
+    }));
+    return res.json(mapped);
   } catch (e) {
     console.error("Error buscando profesores:", e);
     return res.status(500).json({ message: 'Error al buscar profesores' });
@@ -232,7 +239,13 @@ router.get('/alumnos/search', async (req, res) => {
       .select('id, nombre, apellido, dni')
       .or(`nombre.ilike.${term},apellido.ilike.${term}`);
 
-    return res.json(data || []);
+    const mapped = (data || []).map(a => ({
+      id_usuario: a.id,
+      nombre: a.nombre,
+      apellido: a.apellido,
+      dni: a.dni
+    }));
+    return res.json(mapped);
   } catch (e) {
     console.error("Error buscando alumnos:", e);
     return res.status(500).json({ message: 'Error al buscar alumnos' });
