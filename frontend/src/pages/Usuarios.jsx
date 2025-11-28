@@ -50,18 +50,33 @@ export default function Usuarios() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    const payload = {
+      nombre: formData.nombre?.trim(),
+      apellido: formData.apellido?.trim(),
+      email: formData.email?.trim(),
+      rol: formData.rol,
+      ...(formData.password ? { password: formData.password } : {})
+    }
+
+    if (!editingUser && (!payload.password || payload.password.length < 6)) {
+      setError('La contraseña debe tener al menos 6 caracteres')
+      return
+    }
+
     try {
       if (editingUser) {
-        await api.put(`/usuarios/${editingUser.id}`, formData)
+        await api.put(`/usuarios/${editingUser.id}`, payload)
       } else {
-        await api.post('/usuarios', formData)
+        await api.post('/usuarios', payload)
       }
       setShowModal(false)
       setEditingUser(null)
       setFormData({ nombre: '', apellido: '', email: '', rol: 'profesor', password: '' })
       fetchUsuarios()
+      setError(null)
     } catch (err) {
-      setError('Error al guardar usuario')
+      const msg = err?.response?.data?.message || 'Error al guardar usuario'
+      setError(msg)
       console.error('Error:', err)
     }
   }
