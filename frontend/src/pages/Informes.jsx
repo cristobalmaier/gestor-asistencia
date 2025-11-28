@@ -117,7 +117,7 @@ export default function Informes() {
         console.log('Inicio cargar - alumnoIdActual:', alumnoIdActual, 'alumnoId (estado):', alumnoId, 'alumnoIdFinal:', alumnoIdFinal)
 
         // Si no hay alumnoId pero hay texto de búsqueda, intentar encontrar el alumno
-        if (['padre', 'directivo', 'preceptor', 'profesor'].includes(user.rol) && !alumnoIdFinal && busquedaAlumno.trim()) {
+        if (['admin', 'padre', 'directivo', 'preceptor', 'profesor'].includes(user.rol) && !alumnoIdFinal && busquedaAlumno.trim()) {
           // Primero, si hay alumnos ya cargados en el estado (del dropdown), usar esos
           if (alumnos && alumnos.length > 0) {
             // Si hay exactamente un resultado en el estado, usarlo
@@ -192,7 +192,7 @@ export default function Informes() {
           }
         }
 
-        if (['padre', 'directivo', 'preceptor', 'profesor'].includes(user.rol) && !alumnoIdFinal) {
+        if (['admin', 'padre', 'directivo', 'preceptor', 'profesor'].includes(user.rol) && !alumnoIdFinal) {
           toast.error('Seleccione un alumno para continuar')
           setLoading(false)
           return
@@ -247,7 +247,13 @@ export default function Informes() {
         params.set('format', format)
         url = `${import.meta.env.VITE_API_URL || 'http://localhost:4000/api'}/reportes/curso?${params.toString()}`
       } else {
-        if (['padre', 'directivo', 'preceptor', 'profesor'].includes(user.rol) && alumnoId) params.set('alumnoId', alumnoId)
+        if (user.rol !== 'alumno') {
+          if (!alumnoId) {
+            toast.error('Seleccione un alumno para continuar')
+            return
+          }
+          params.set('alumnoId', alumnoId)
+        }
         if (materiaId) params.set('materiaId', materiaId)
         params.set('format', format)
         url = `${import.meta.env.VITE_API_URL || 'http://localhost:4000/api'}/reportes/alumno?${params.toString()}`
@@ -269,7 +275,8 @@ export default function Informes() {
       const downloadUrl = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = downloadUrl
-      link.setAttribute('download', `reporte_${tab}.${format}`)
+      const extension = format === 'excel' ? 'xlsx' : format
+      link.setAttribute('download', `reporte_${tab}.${extension}`)
       document.body.appendChild(link)
       link.click()
       link.remove()

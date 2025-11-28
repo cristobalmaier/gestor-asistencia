@@ -288,8 +288,17 @@ router.get('/alumno', async (req, res) => {
         estado: a.presente ? 'Presente' : (a.tarde ? 'Tarde' : (a.justificada ? 'Justificado' : 'Ausente'))
       };
     });
+    // Calcular estadísticas
+    const total = rows.length;
+    const presentes = rows.filter(r => r.estado === 'Presente').length;
+    const ausentes = rows.filter(r => r.estado === 'Ausente').length;
+    const tardes = rows.filter(r => r.estado === 'Tarde').length;
+    const justificados = rows.filter(r => r.estado === 'Justificado').length;
+    const porcentajeAsistencia = total > 0 ? ((presentes / total) * 100).toFixed(1) : '0.0';
+
+
     if (formatType === 'csv') {
-      const parser = new Parser({ fields: ['fecha', 'materia', 'estado'] });
+      const parser = new Parser({ fields: ['fecha', 'materia', 'curso', 'estado'] });
       const csv = parser.parse(rows);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="reporte_alumno.csv"');
@@ -298,18 +307,68 @@ router.get('/alumno', async (req, res) => {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Reporte');
 
+      // Estilos - Paleta Azul
+      const primaryColor = 'FF2563EB'; // Blue 600
+      const headerStyle = {
+        font: { bold: true, color: { argb: 'FFFFFFFF' } },
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: primaryColor } },
+        alignment: { horizontal: 'center' }
+      };
+
+      // Sección de Resumen
+      worksheet.mergeCells('A1:D1');
+      const titleCell = worksheet.getCell('A1');
+      titleCell.value = 'Resumen de Asistencia';
+      titleCell.font = { bold: true, size: 16, color: { argb: primaryColor } };
+      titleCell.alignment = { horizontal: 'center' };
+
+      // Tabla de Resumen
+      worksheet.addRow(['Categoría', 'Cantidad', 'Porcentaje']);
+      const summaryHeaderRow = worksheet.lastRow;
+      summaryHeaderRow.getCell(1).font = { bold: true };
+      summaryHeaderRow.getCell(2).font = { bold: true };
+      summaryHeaderRow.getCell(3).font = { bold: true };
+
+      worksheet.addRow(['Presentes', presentes, total > 0 ? presentes / total : 0]);
+      worksheet.addRow(['Ausentes', ausentes, total > 0 ? ausentes / total : 0]);
+      worksheet.addRow(['Justificados', justificados, total > 0 ? justificados / total : 0]);
+
+      worksheet.addRow([]); // Espacio vacío
+      worksheet.addRow(['Total de Clases:', total]);
+      worksheet.getCell('A6').font = { bold: true };
+
+      // Formato de porcentaje
+      worksheet.getColumn(3).numFmt = '0.0%';
+
+      worksheet.addRow([]); // Espacio vacío
+      worksheet.addRow([]); // Espacio vacío
+
+      // Tabla de Detalle
+      worksheet.addRow(['Fecha', 'Materia', 'Curso', 'Estado']);
+      const headerRow = worksheet.lastRow;
+      headerRow.eachCell((cell) => {
+        cell.style = headerStyle;
+      });
+
       worksheet.columns = [
-        { header: 'Fecha', key: 'fecha', width: 15 },
-        { header: 'Materia', key: 'materia', width: 40 },
-        { header: 'Estado', key: 'estado', width: 15 }
+        { key: 'fecha', width: 15 },
+        { key: 'materia', width: 30 },
+        { key: 'curso', width: 20 },
+        { key: 'estado', width: 15 }
       ];
 
-      worksheet.addRows(rows.map(row => ({
-        ...row,
-        fecha: format(new Date(row.fecha), 'dd/MM/yyyy', { locale: es })
-      })));
+      rows.forEach(row => {
+        const r = worksheet.addRow({
+          ...row,
+          fecha: format(new Date(row.fecha), 'dd/MM/yyyy', { locale: es })
+        });
 
-      worksheet.getRow(1).font = { bold: true };
+        // Colorear estado
+        const estadoCell = r.getCell(4);
+        if (row.estado === 'Ausente') estadoCell.font = { color: { argb: 'FFFF0000' } }; // Rojo
+        else if (row.estado === 'Presente') estadoCell.font = { color: { argb: 'FF166534' } }; // Verde oscuro
+        else if (row.estado === 'Justificado') estadoCell.font = { color: { argb: 'FFCA8A04' } }; // Amarillo oscuro
+      });
 
       const buffer = await workbook.xlsx.writeBuffer();
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -329,26 +388,83 @@ router.get('/alumno', async (req, res) => {
       const docDefinition = {
         content: [
           { text: 'Reporte de Asistencia del Alumno', style: 'header' },
+
+          // Sección de Resumen
+          { text: 'Resumen General', style: 'subheader' },
+          {
+            table: {
+              widths: ['*', '*', '*', '*', '*'],
+              body: [
+                [
+                  { text: 'Total Clases', style: 'tableHeader' },
+                  { text: 'Presentes', style: 'tableHeader' },
+                  { text: 'Ausentes', style: 'tableHeader' },
+                  { text: 'Justificados', style: 'tableHeader' },
+                  { text: 'Porcentaje', style: 'tableHeader' }
+                ],
+                [
+                  total.toString(),
+                  presentes.toString(),
+                  ausentes.toString(),
+                  justificados.toString(),
+                  { text: `${porcentajeAsistencia}%`, bold: true }
+                ]
+              ]
+            },
+            layout: 'lightHorizontalLines',
+            margin: [0, 0, 0, 20]
+          },
+
+          // Tabla de Detalle
+          { text: 'Detalle de Asistencias', style: 'subheader' },
           {
             table: {
               headerRows: 1,
-              widths: ['*', '*', 'auto'],
+              widths: ['auto', '*', 'auto', 'auto'],
               body: [
-                ['Fecha', 'Materia', 'Estado'],
+                [
+                  { text: 'Fecha', style: 'tableHeader' },
+                  { text: 'Materia', style: 'tableHeader' },
+                  { text: 'Curso', style: 'tableHeader' },
+                  { text: 'Estado', style: 'tableHeader' }
+                ],
                 ...rows.map(row => [
                   format(new Date(row.fecha), 'dd/MM/yyyy', { locale: es }),
                   row.materia,
-                  row.estado
+                  row.curso,
+                  {
+                    text: row.estado,
+                    color: row.estado === 'Ausente' ? 'red' : (row.estado === 'Presente' ? 'green' : 'black')
+                  }
                 ])
               ]
+            },
+            layout: {
+              fillColor: function (rowIndex, node, columnIndex) {
+                return (rowIndex === 0) ? '#2563EB' : (rowIndex % 2 === 0) ? '#EFF6FF' : null; // Blue 600 & Blue 50
+              }
             }
           }
         ],
         styles: {
           header: {
-            fontSize: 18,
+            fontSize: 22,
             bold: true,
+            color: '#1E40AF', // Blue 800
             margin: [0, 0, 0, 10]
+          },
+          subheader: {
+            fontSize: 16,
+            bold: true,
+            color: '#1E40AF', // Blue 800
+            margin: [0, 10, 0, 5]
+          },
+          tableHeader: {
+            bold: true,
+            fontSize: 12,
+            color: 'white',
+            fillColor: '#2563EB', // Blue 600
+            alignment: 'center'
           }
         },
         defaultStyle: {

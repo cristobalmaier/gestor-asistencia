@@ -47,6 +47,7 @@ CREATE TABLE public.curso (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   curso text NOT NULL,
   turno USER-DEFINED,
+  updated_at date DEFAULT now(),
   CONSTRAINT curso_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.eventos (
@@ -134,8 +135,10 @@ CREATE TABLE public.materias (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   profesor text,
+  teacher_id uuid,
   CONSTRAINT materias_pkey PRIMARY KEY (id),
-  CONSTRAINT materias_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES public.curso(id)
+  CONSTRAINT materias_curso_id_fkey FOREIGN KEY (curso_id) REFERENCES public.curso(id),
+  CONSTRAINT fk_materias_teacher_id FOREIGN KEY (teacher_id) REFERENCES public.teachers(id)
 );
 CREATE TABLE public.notificaciones (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
