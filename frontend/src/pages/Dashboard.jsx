@@ -138,8 +138,8 @@ export default function Dashboard() {
         <p className="text-gray-600">¿Qué te gustaría hacer hoy?</p>
       </div>
 
-      {/* Statistics Section - Solo visible para admin */}
-      {user?.rol === 'admin' && (
+      {/* Statistics Section - Visible para admin y directivo */}
+      {['admin', 'directivo'].includes(user?.rol) && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* General Attendance Percentage */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -232,8 +232,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Detailed Statistics - Solo visible para admin */}
-      {user?.rol === 'admin' && (
+      {/* Detailed Statistics - Visible para admin y directivo */}
+      {['admin', 'directivo'].includes(user?.rol) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Students with Most Absences */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
