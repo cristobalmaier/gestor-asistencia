@@ -322,8 +322,8 @@ export default function Informes() {
           <button
             onClick={() => setTab('curso')}
             className={`px-4 py-3 font-semibold text-sm transition-colors border-b-2 ${tab === 'curso'
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
+              ? 'border-primary-600 text-primary-600'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
               }`}
           >
             Por curso
@@ -332,8 +332,8 @@ export default function Informes() {
         <button
           onClick={() => setTab('alumno')}
           className={`px-4 py-3 font-semibold text-sm transition-colors border-b-2 ${tab === 'alumno'
-              ? 'border-primary-600 text-primary-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+            ? 'border-primary-600 text-primary-600'
+            : 'border-transparent text-gray-600 hover:text-gray-900'
             }`}
         >
           Por alumno
@@ -602,14 +602,21 @@ export default function Informes() {
                 ) : (
                   <>
                     <td className="px-6 py-4">
-                      <span className="font-medium text-gray-900">{new Date(r.fecha).toLocaleDateString('es-ES')}</span>
+                      <span className="font-medium text-gray-900">
+                        {(() => {
+                          if (!r.fecha) return '-';
+                          // Parse YYYY-MM-DD manually to avoid timezone issues
+                          const [year, month, day] = r.fecha.split('T')[0].split('-');
+                          return `${day}/${month}/${year}`;
+                        })()}
+                      </span>
                     </td>
                     <td className="px-6 py-4 text-gray-600">{r.materia}</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border ${r.estado === 'Presente' ? 'bg-green-50 text-green-700 border-green-200' :
-                          r.estado === 'Ausente' ? 'bg-red-50 text-red-700 border-red-200' :
-                            r.estado === 'Tarde' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                              'bg-primary-50 text-primary-700 border-primary-200'
+                        r.estado === 'Ausente' ? 'bg-red-50 text-red-700 border-red-200' :
+                          r.estado === 'Tarde' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                            'bg-primary-50 text-primary-700 border-primary-200'
                         }`}>
                         {r.estado}
                       </span>
